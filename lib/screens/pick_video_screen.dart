@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import '../providers/video_provider.dart';
 import '../services/video_picker_service.dart';
 import 'editor_screen.dart';
 
@@ -12,27 +13,22 @@ class PickVideoScreen extends StatefulWidget {
 
 class _PickVideoScreenState extends State<PickVideoScreen> {
   final VideoPickerService _pickerService = VideoPickerService();
-  final List<XFile> _selectedVideos = [];
 
   // 從相簿選擇影片
   Future<void> _pickVideo() async {
     final video = await _pickerService.pickOneVideo();
     if (video != null) {
-      setState(() {
-        _selectedVideos.add(video);
-      });
+      if (!mounted) return;
+      context.read<VideoProvider>().addVideo(video);
     }
-  }
-
-  // 移除已選的影片
-  void _removeVideo(int index) {
-    setState(() {
-      _selectedVideos.removeAt(index);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // 監聽 Provider 裡的影片列表
+    final videoProvider = context.watch<VideoProvider>();
+    final selectedVideos = videoProvider.selectedVideos;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('選擇影片素材'),
@@ -57,7 +53,7 @@ class _PickVideoScreenState extends State<PickVideoScreen> {
             Row(
               children: [
                 Text(
-                  '已選影片 (${_selectedVideos.length})',
+                  '已選影片 (${selectedVideos.length})',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -69,7 +65,7 @@ class _PickVideoScreenState extends State<PickVideoScreen> {
 
             // 已選影片的列表
             Expanded(
-              child: _selectedVideos.isEmpty
+              child: selectedVideos.isEmpty
                   ? const Center(
                       child: Text(
                         '尚未選擇任何影片\n請點擊上方按鈕選擇素材',
@@ -78,16 +74,16 @@ class _PickVideoScreenState extends State<PickVideoScreen> {
                       ),
                     )
                   : ListView.builder(
-                      itemCount: _selectedVideos.length,
+                      itemCount: selectedVideos.length,
                       itemBuilder: (context, index) {
-                        final video = _selectedVideos[index];
+                        final video = selectedVideos[index];
                         return Card(
                           child: ListTile(
                             leading: const Icon(Icons.videocam, color: Colors.blueAccent),
                             title: Text(video.name),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _removeVideo(index),
+                              onPressed: () => videoProvider.removeVideo(index),
                             ),
                           ),
                         );
@@ -96,7 +92,7 @@ class _PickVideoScreenState extends State<PickVideoScreen> {
             ),
 
             // 下一步按鈕（有選影片才能按）
-            if (_selectedVideos.isNotEmpty)
+            if (selectedVideos.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
                 child: SizedBox(
@@ -107,7 +103,7 @@ class _PickVideoScreenState extends State<PickVideoScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => EditorScreen(videos: _selectedVideos),
+                          builder: (context) => const EditorScreen(),
                         ),
                       );
                     },

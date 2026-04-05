@@ -1,13 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import '../providers/video_provider.dart';
 import '../services/ai_api_service.dart';
 
 class EditorScreen extends StatefulWidget {
-  final List<XFile> videos;
-
-  const EditorScreen({super.key, required this.videos});
+  const EditorScreen({super.key});
 
   @override
   State<EditorScreen> createState() => _EditorScreenState();
@@ -21,11 +20,6 @@ class _EditorScreenState extends State<EditorScreen> {
   final AiApiService _aiService = AiApiService();
   bool _isExporting = false;
 
-  // 記錄三個 AI 功能的開關狀態
-  bool _aiRemoveFiller = false;
-  bool _aiSubtitle = false;
-  bool _aiBusinessCard = false;
-
   @override
   void initState() {
     super.initState();
@@ -34,7 +28,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 初始化影片播放器
   Future<void> _initPlayer() async {
-    final file = File(widget.videos[_currentVideoIndex].path);
+    final videos = context.read<VideoProvider>().selectedVideos;
+    final file = File(videos[_currentVideoIndex].path);
     _controller = VideoPlayerController.file(file);
     await _controller.initialize();
     setState(() {
@@ -50,7 +45,8 @@ class _EditorScreenState extends State<EditorScreen> {
     });
     await _controller.dispose();
     _currentVideoIndex = index;
-    final file = File(widget.videos[index].path);
+    final videos = context.read<VideoProvider>().selectedVideos;
+    final file = File(videos[index].path);
     _controller = VideoPlayerController.file(file);
     await _controller.initialize();
     setState(() {
@@ -66,29 +62,21 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final videoProvider = context.watch<VideoProvider>();
+    final videos = videoProvider.selectedVideos;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI 影片編輯'),
       ),
       body: Column(
         children: [
-          // ===== 區塊一：影片播放器 =====
           _buildVideoPlayer(),
-
-          // ===== 區塊二：影片時間軸 =====
           _buildTimeline(),
-
-          // ===== 區塊三：影片素材列表 =====
-          if (widget.videos.length > 1) _buildVideoTabs(),
-
+          if (videos.length > 1) _buildVideoTabs(videos.length),
           const Spacer(),
-
-          // ===== 區塊四：三個 AI 功能按鈕 =====
-          _buildAiButtons(),
-
-          // ===== 匯出按鈕 =====
-          _buildExportButton(),
-
+          _buildAiButtons(videoProvider),
+          _buildExportButton(videoProvider),
           const SizedBox(height: 20),
         ],
       ),
@@ -109,7 +97,6 @@ class _EditorScreenState extends State<EditorScreen> {
                   aspectRatio: _controller.value.aspectRatio,
                   child: VideoPlayer(_controller),
                 ),
-                // 播放/暫停按鈕
                 GestureDetector(
                   onTap: () {
                     setState(() {
@@ -153,13 +140,13 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 多段影片的切換標籤
-  Widget _buildVideoTabs() {
+  Widget _buildVideoTabs(int videoCount) {
     return SizedBox(
       height: 50,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: widget.videos.length,
+        itemCount: videoCount,
         itemBuilder: (context, index) {
           final isActive = index == _currentVideoIndex;
           return Padding(
@@ -176,7 +163,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 三個 AI 功能按鈕
-  Widget _buildAiButtons() {
+  Widget _buildAiButtons(VideoProvider provider) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -184,30 +171,30 @@ class _EditorScreenState extends State<EditorScreen> {
           _buildAiToggle(
             icon: Icons.auto_fix_high,
             label: 'AI 去冗言',
-            isActive: _aiRemoveFiller,
+            isActive: provider.aiRemoveFiller,
             onTap: () {
-              setState(() => _aiRemoveFiller = !_aiRemoveFiller);
-              if (_aiRemoveFiller) _showAiMessage('AI 去冗言已啟用（將在匯出時處理）');
+              provider.toggleRemoveFiller();
+              if (provider.aiRemoveFiller) _showAiMessage('AI 去冗言已啟用（將在匯出時處理）');
             },
           ),
           const SizedBox(width: 8),
           _buildAiToggle(
             icon: Icons.subtitles,
             label: 'AI 上字幕',
-            isActive: _aiSubtitle,
+            isActive: provider.aiSubtitle,
             onTap: () {
-              setState(() => _aiSubtitle = !_aiSubtitle);
-              if (_aiSubtitle) _showAiMessage('AI 字幕已啟用（將在匯出時處理）');
+              provider.toggleSubtitle();
+              if (provider.aiSubtitle) _showAiMessage('AI 字幕已啟用（將在匯出時處理）');
             },
           ),
           const SizedBox(width: 8),
           _buildAiToggle(
             icon: Icons.contact_mail,
             label: '名片片尾',
-            isActive: _aiBusinessCard,
+            isActive: provider.aiBusinessCard,
             onTap: () {
-              setState(() => _aiBusinessCard = !_aiBusinessCard);
-              if (_aiBusinessCard) _showAiMessage('名片片尾已啟用（將在匯出時處理）');
+              provider.toggleBusinessCard();
+              if (provider.aiBusinessCard) _showAiMessage('名片片尾已啟用（將在匯出時處理）');
             },
           ),
         ],
@@ -251,14 +238,14 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 匯出按鈕
-  Widget _buildExportButton() {
+  Widget _buildExportButton(VideoProvider provider) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: SizedBox(
         width: double.infinity,
         height: 52,
         child: FilledButton.icon(
-          onPressed: _isExporting ? null : _handleExport,
+          onPressed: _isExporting ? null : () => _handleExport(provider),
           icon: _isExporting
               ? const SizedBox(
                   width: 20,
@@ -276,15 +263,15 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 處理匯出流程
-  Future<void> _handleExport() async {
+  Future<void> _handleExport(VideoProvider provider) async {
     setState(() => _isExporting = true);
 
-    final paths = widget.videos.map((v) => v.path).toList();
+    final paths = provider.selectedVideos.map((v) => v.path).toList();
     final result = await _aiService.exportVideo(
       videoPaths: paths,
-      removeFiller: _aiRemoveFiller,
-      addSubtitles: _aiSubtitle,
-      addBusinessCard: _aiBusinessCard,
+      removeFiller: provider.aiRemoveFiller,
+      addSubtitles: provider.aiSubtitle,
+      addBusinessCard: provider.aiBusinessCard,
     );
 
     setState(() => _isExporting = false);
