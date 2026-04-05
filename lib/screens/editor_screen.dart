@@ -215,22 +215,33 @@ class _EditorScreenState extends State<EditorScreen> {
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            color: isActive ? Colors.blueAccent : Colors.grey[200],
-            borderRadius: BorderRadius.circular(12),
+            gradient: isActive
+                ? const LinearGradient(
+                    colors: [Color(0xFF1A56DB), Color(0xFF3B82F6)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isActive ? null : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isActive ? Colors.transparent : const Color(0xFFE2E8F0),
+            ),
           ),
           child: Column(
             children: [
-              Icon(icon, color: isActive ? Colors.white : Colors.grey[700]),
+              Icon(icon, color: isActive ? Colors.white : const Color(0xFF64748B)),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: isActive ? Colors.white : Colors.grey[700],
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                  color: isActive ? Colors.white : const Color(0xFF64748B),
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
                 ),
               ),
             ],

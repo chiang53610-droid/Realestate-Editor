@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme.dart';
 import 'pick_video_screen.dart';
 import 'portfolio_screen.dart';
 import 'script_guide_screen.dart';
@@ -9,20 +10,66 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 最上方的標題列
       appBar: AppBar(
         title: const Text('AI 房仲剪輯'),
         centerTitle: true,
       ),
-      // 頁面主體
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 歡迎區塊
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.videocam, size: 40, color: Colors.white),
+                  SizedBox(height: 12),
+                  Text(
+                    '歡迎回來！',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '用 AI 打造專業房仲影片',
+                    style: TextStyle(fontSize: 15, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 28),
+
+            // 功能區標題
+            const Text(
+              '開始製作',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ),
+            ),
+            const SizedBox(height: 14),
+
             // 第一張卡片：拍攝腳本指引
             _buildMenuCard(
               icon: Icons.description,
+              iconBgColor: const Color(0xFFEFF6FF),
+              iconColor: AppTheme.primaryColor,
               title: '拍攝腳本指引',
               subtitle: '依照指引拍出專業影片',
               onTap: () {
@@ -32,11 +79,13 @@ class HomeScreen extends StatelessWidget {
                 );
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
 
             // 第二張卡片：選擇影片一鍵剪輯
             _buildMenuCard(
               icon: Icons.movie_creation,
+              iconBgColor: const Color(0xFFFFF7ED),
+              iconColor: AppTheme.accentColor,
               title: '選擇影片一鍵剪輯',
               subtitle: '從相簿選擇素材，AI 自動剪輯',
               onTap: () {
@@ -46,11 +95,13 @@ class HomeScreen extends StatelessWidget {
                 );
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
 
             // 第三張卡片：我的作品集
             _buildMenuCard(
               icon: Icons.folder_special,
+              iconBgColor: const Color(0xFFF0FDF4),
+              iconColor: const Color(0xFF16A34A),
               title: '我的作品集',
               subtitle: '查看已完成的影片作品',
               onTap: () {
@@ -66,25 +117,33 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // 這是一個「卡片產生器」，幫我們製作統一風格的選單卡片
   Widget _buildMenuCard({
     required IconData icon,
+    required Color iconBgColor,
+    required Color iconColor,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
   }) {
     return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 18),
           child: Row(
             children: [
-              Icon(icon, size: 40, color: Colors.blueAccent),
-              const SizedBox(width: 20),
+              // 圓形圖示背景
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: iconBgColor,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, size: 28, color: iconColor),
+              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -92,19 +151,20 @@ class HomeScreen extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       subtitle,
-                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Colors.grey),
+              const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1)),
             ],
           ),
         ),
