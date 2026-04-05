@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'pick_video_screen.dart';
 import 'portfolio_screen.dart';
+import 'script_guide_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -25,7 +26,10 @@ class HomeScreen extends StatelessWidget {
               title: '拍攝腳本指引',
               subtitle: '依照指引拍出專業影片',
               onTap: () {
-                // 之後會連到腳本指引頁面
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ScriptGuideScreen()),
+                );
               },
             ),
             const SizedBox(height: 20),
