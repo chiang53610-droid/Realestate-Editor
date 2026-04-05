@@ -6,6 +6,7 @@ import '../providers/video_provider.dart';
 import '../models/work_item.dart';
 import '../services/ai_api_service.dart';
 import '../services/storage_service.dart';
+import 'business_card_screen.dart';
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -197,7 +198,13 @@ class _EditorScreenState extends State<EditorScreen> {
             isActive: provider.aiBusinessCard,
             onTap: () {
               provider.toggleBusinessCard();
-              if (provider.aiBusinessCard) _showAiMessage('名片片尾已啟用（將在匯出時處理）');
+              if (provider.aiBusinessCard) {
+                // 啟用時自動跳轉到名片編輯頁
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BusinessCardScreen()),
+                );
+              }
             },
           ),
         ],

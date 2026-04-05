@@ -3,6 +3,7 @@ import '../theme.dart';
 import 'pick_video_screen.dart';
 import 'portfolio_screen.dart';
 import 'script_guide_screen.dart';
+import 'business_card_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -97,7 +98,23 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // 第三張卡片：我的作品集
+            // 第三張卡片：名片片尾設定
+            _buildMenuCard(
+              icon: Icons.contact_mail,
+              iconBgColor: const Color(0xFFFDF2F8),
+              iconColor: const Color(0xFFDB2777),
+              title: '名片片尾設定',
+              subtitle: '設定個人名片，影片結尾自動附加',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const BusinessCardScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // 第四張卡片：我的作品集
             _buildMenuCard(
               icon: Icons.folder_special,
               iconBgColor: const Color(0xFFF0FDF4),

@@ -1,53 +1,9 @@
 import 'package:flutter/material.dart';
+import '../models/shooting_script.dart';
+import 'camera_screen.dart';
 
 class ScriptGuideScreen extends StatelessWidget {
   const ScriptGuideScreen({super.key});
-
-  // 預設的拍攝腳本步驟
-  static const List<Map<String, String>> _steps = [
-    {
-      'title': '開場介紹',
-      'duration': '15 秒',
-      'description': '站在房屋門口，面對鏡頭自我介紹，說明物件地址與特色。',
-      'tip': '保持微笑、語速放慢，讓觀眾記住你。',
-    },
-    {
-      'title': '客廳全景',
-      'duration': '20 秒',
-      'description': '從大門走進客廳，緩慢環繞拍攝，展示空間大小與採光。',
-      'tip': '手機橫拿、走路放慢，避免畫面晃動。',
-    },
-    {
-      'title': '廚房介紹',
-      'duration': '15 秒',
-      'description': '拍攝廚房設備與檯面，介紹廚具品牌或特殊設計。',
-      'tip': '開燈拍攝，特寫重點設備。',
-    },
-    {
-      'title': '臥室展示',
-      'duration': '15 秒',
-      'description': '拍攝主臥室空間，展示衣櫃、窗景。',
-      'tip': '先拍全景，再拍窗外景觀做為亮點。',
-    },
-    {
-      'title': '衛浴空間',
-      'duration': '10 秒',
-      'description': '簡短展示衛浴設備與空間。',
-      'tip': '注意鏡面反射，避免拍到自己。',
-    },
-    {
-      'title': '陽台 / 景觀',
-      'duration': '15 秒',
-      'description': '走到陽台拍攝戶外景觀，強調周邊環境優勢。',
-      'tip': '白天拍攝效果最好，展示遠景。',
-    },
-    {
-      'title': '結尾呼籲',
-      'duration': '10 秒',
-      'description': '面對鏡頭做結尾，邀請觀眾預約看房，提供聯絡方式。',
-      'tip': '語氣親切有力，搭配 App 自動生成的名片片尾。',
-    },
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -67,27 +23,46 @@ class ScriptGuideScreen extends StatelessWidget {
                 Icon(Icons.tips_and_updates, size: 36, color: Colors.blueAccent),
                 SizedBox(height: 8),
                 Text(
-                  '照著以下 7 個步驟拍攝',
+                  '選擇模板，跟著腳本拍攝',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 4),
                 Text(
-                  '預計總時長約 100 秒，拍完後回首頁選擇影片一鍵剪輯',
+                  '拍攝時會有 AI 提詞機引導你說什麼',
                   style: TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               ],
             ),
           ),
 
-          // 步驟列表
+          // 模板選擇列表
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _steps.length,
+              itemCount: ScriptTemplates.all.length,
               itemBuilder: (context, index) {
-                final step = _steps[index];
-                return _buildStepCard(index + 1, step);
+                final script = ScriptTemplates.all[index];
+                return _buildTemplateCard(context, script);
               },
+            ),
+          ),
+
+          // 底部「自由拍攝」按鈕（不使用腳本）
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CameraScreen()),
+                  );
+                },
+                icon: const Icon(Icons.videocam),
+                label: const Text('自由拍攝（無腳本）', style: TextStyle(fontSize: 16)),
+              ),
             ),
           ),
         ],
@@ -95,92 +70,222 @@ class ScriptGuideScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStepCard(int number, Map<String, String> step) {
+  /// 單一模板卡片
+  Widget _buildTemplateCard(BuildContext context, ShootingScript script) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 左邊的步驟編號圓圈
-            CircleAvatar(
-              backgroundColor: Colors.blueAccent,
-              radius: 18,
-              child: Text(
-                '$number',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showScriptDetail(context, script),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              // 左側圖示
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.description, size: 28, color: Colors.blueAccent),
+              ),
+              const SizedBox(width: 14),
+
+              // 中間文字
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      script.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      script.description,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                    ),
+                    const SizedBox(height: 6),
+                    // 小標籤
+                    Row(
+                      children: [
+                        _buildInfoChip('${script.steps.length} 站', Colors.blue),
+                        const SizedBox(width: 6),
+                        _buildInfoChip('${script.totalDuration} 秒', Colors.orange),
+                      ],
+                    ),
+                  ],
                 ),
               ),
+
+              const Icon(Icons.chevron_right, color: Color(0xFFCBD5E1)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 小標籤元件
+  Widget _buildInfoChip(String text, MaterialColor color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color[50],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, color: color[700], fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  /// 點擊模板 → 顯示步驟詳情底部彈窗
+  void _showScriptDetail(BuildContext context, ShootingScript script) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            // 拖曳把手
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-            const SizedBox(width: 14),
 
-            // 右邊的內容
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            // 標題區
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(
                 children: [
-                  // 標題 + 建議秒數
-                  Row(
-                    children: [
-                      Text(
-                        step['title']!,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          step['duration']!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.orange[800],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
+                  Expanded(
+                    child: Text(
+                      script.name,
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  const SizedBox(height: 6),
-
-                  // 說明文字
-                  Text(
-                    step['description']!,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(height: 6),
-
-                  // 小提示
-                  Row(
-                    children: [
-                      Icon(Icons.lightbulb_outline, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          step['tip']!,
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                      ),
-                    ],
-                  ),
+                  _buildInfoChip('${script.steps.length} 站', Colors.blue),
+                  const SizedBox(width: 6),
+                  _buildInfoChip('${script.totalDuration} 秒', Colors.orange),
                 ],
+              ),
+            ),
+
+            const Divider(),
+
+            // 步驟列表
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: script.steps.length,
+                itemBuilder: (_, index) {
+                  final step = script.steps[index];
+                  return _buildStepRow(index + 1, step);
+                },
+              ),
+            ),
+
+            // 底部「開始拍攝」按鈕
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx); // 關閉底部彈窗
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CameraScreen(script: script),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.videocam, size: 28),
+                  label: const Text('依照此腳本開始拍攝', style: TextStyle(fontSize: 17)),
+                ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 單一步驟的行
+  Widget _buildStepRow(int number, ScriptStep step) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 步驟編號
+          CircleAvatar(
+            backgroundColor: Colors.blueAccent,
+            radius: 16,
+            child: Text(
+              '$number',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          // 步驟內容
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      step.title,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${step.durationSecs} 秒',
+                        style: TextStyle(fontSize: 11, color: Colors.orange[800], fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  step.description,
+                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
