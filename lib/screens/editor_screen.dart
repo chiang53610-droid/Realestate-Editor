@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../providers/video_provider.dart';
+import '../models/work_item.dart';
 import '../services/ai_api_service.dart';
+import '../services/storage_service.dart';
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -18,6 +20,7 @@ class _EditorScreenState extends State<EditorScreen> {
   int _currentVideoIndex = 0;
 
   final AiApiService _aiService = AiApiService();
+  final StorageService _storageService = StorageService();
   bool _isExporting = false;
 
   @override
@@ -274,8 +277,21 @@ class _EditorScreenState extends State<EditorScreen> {
       addBusinessCard: provider.aiBusinessCard,
     );
 
+    // 儲存作品紀錄到本地
+    final now = DateTime.now();
+    final work = WorkItem(
+      id: now.millisecondsSinceEpoch.toString(),
+      title: '房仲影片 ${now.month}/${now.day} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
+      date: '${now.year}/${now.month}/${now.day}',
+      videoCount: paths.length,
+      usedRemoveFiller: provider.aiRemoveFiller,
+      usedSubtitle: provider.aiSubtitle,
+      usedBusinessCard: provider.aiBusinessCard,
+    );
+    await _storageService.saveWork(work);
+
     setState(() => _isExporting = false);
-    _showAiMessage(result.message);
+    _showAiMessage('${result.message} 已儲存到作品集');
   }
 
   // 顯示提示訊息
