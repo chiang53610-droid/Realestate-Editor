@@ -624,6 +624,7 @@ class _EditorScreenState extends State<EditorScreen> {
       usedRemoveFiller: provider.aiRemoveFiller,
       usedSubtitle: provider.aiSubtitle,
       usedBusinessCard: provider.aiBusinessCard,
+      outputPath: exportResult.outputPath,
     );
     await _storageService.saveWork(work);
 

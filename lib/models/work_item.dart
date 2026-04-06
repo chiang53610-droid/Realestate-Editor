@@ -8,6 +8,7 @@ class WorkItem {
   final bool usedRemoveFiller;
   final bool usedSubtitle;
   final bool usedBusinessCard;
+  final String? outputPath; // 匯出影片的檔案路徑
 
   WorkItem({
     required this.id,
@@ -17,6 +18,7 @@ class WorkItem {
     required this.usedRemoveFiller,
     required this.usedSubtitle,
     required this.usedBusinessCard,
+    this.outputPath,
   });
 
   // 把物件轉成 JSON（方便存進小筆記本）
@@ -28,6 +30,7 @@ class WorkItem {
         'usedRemoveFiller': usedRemoveFiller,
         'usedSubtitle': usedSubtitle,
         'usedBusinessCard': usedBusinessCard,
+        'outputPath': outputPath,
       };
 
   // 從 JSON 讀回物件
@@ -36,9 +39,10 @@ class WorkItem {
         title: json['title'],
         date: json['date'],
         videoCount: json['videoCount'],
-        usedRemoveFiller: json['usedRemoveFiller'],
-        usedSubtitle: json['usedSubtitle'],
-        usedBusinessCard: json['usedBusinessCard'],
+        usedRemoveFiller: json['usedRemoveFiller'] ?? false,
+        usedSubtitle: json['usedSubtitle'] ?? false,
+        usedBusinessCard: json['usedBusinessCard'] ?? false,
+        outputPath: json['outputPath'],
       );
 
   // 把整個列表轉成字串存起來
