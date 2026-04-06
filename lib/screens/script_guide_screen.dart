@@ -1,9 +1,34 @@
 import 'package:flutter/material.dart';
 import '../models/shooting_script.dart';
+import '../services/storage_service.dart';
 import 'camera_screen.dart';
+import 'script_editor_screen.dart';
 
-class ScriptGuideScreen extends StatelessWidget {
+class ScriptGuideScreen extends StatefulWidget {
   const ScriptGuideScreen({super.key});
+
+  @override
+  State<ScriptGuideScreen> createState() => _ScriptGuideScreenState();
+}
+
+class _ScriptGuideScreenState extends State<ScriptGuideScreen> {
+  final StorageService _storage = StorageService();
+  List<ShootingScript> _customScripts = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomScripts();
+  }
+
+  Future<void> _loadCustomScripts() async {
+    final scripts = await _storage.loadCustomScripts();
+    setState(() {
+      _customScripts = scripts;
+      _isLoading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,19 +60,36 @@ class ScriptGuideScreen extends StatelessWidget {
             ),
           ),
 
-          // 模板選擇列表
+          // 模板列表
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: ScriptTemplates.all.length,
-              itemBuilder: (context, index) {
-                final script = ScriptTemplates.all[index];
-                return _buildTemplateCard(context, script);
-              },
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // ====== 自訂模板區 ======
+                      if (_customScripts.isNotEmpty) ...[
+                        _buildSectionTitle('我的模板', showAdd: true),
+                        const SizedBox(height: 8),
+                        ..._customScripts.map((s) => _buildTemplateCard(context, s, isCustom: true)),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // ====== 新增模板按鈕（沒有自訂模板時顯示在最上方）======
+                      if (_customScripts.isEmpty) ...[
+                        _buildCreateButton(),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // ====== 內建模板區 ======
+                      _buildSectionTitle('內建模板', showAdd: _customScripts.isNotEmpty),
+                      const SizedBox(height: 8),
+                      ...ScriptTemplates.all.map((s) => _buildTemplateCard(context, s)),
+                    ],
+                  ),
           ),
 
-          // 底部「自由拍攝」按鈕（不使用腳本）
+          // 底部「自由拍攝」按鈕
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
             child: SizedBox(
@@ -70,14 +112,94 @@ class ScriptGuideScreen extends StatelessWidget {
     );
   }
 
+  /// 區塊標題 + 新增按鈕
+  Widget _buildSectionTitle(String title, {bool showAdd = false}) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E293B),
+          ),
+        ),
+        const Spacer(),
+        if (showAdd)
+          TextButton.icon(
+            onPressed: _navigateToEditor,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('新增'),
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF1A56DB),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// 新增模板按鈕（大型卡片樣式）
+  Widget _buildCreateButton() {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _navigateToEditor,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.add, size: 32, color: Color(0xFF1A56DB)),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '建立自訂腳本模板',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '自訂步驟、秒數和提詞機台詞',
+                style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 導航到腳本編輯頁面
+  Future<void> _navigateToEditor({ShootingScript? script}) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ScriptEditorScreen(existingScript: script),
+      ),
+    );
+    if (result == true) {
+      _loadCustomScripts();
+    }
+  }
+
   /// 單一模板卡片
-  Widget _buildTemplateCard(BuildContext context, ShootingScript script) {
+  Widget _buildTemplateCard(BuildContext context, ShootingScript script, {bool isCustom = false}) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _showScriptDetail(context, script),
+        onTap: () => _showScriptDetail(context, script, isCustom: isCustom),
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Row(
@@ -87,10 +209,14 @@ class ScriptGuideScreen extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.blue[50],
+                  color: isCustom ? Colors.purple[50] : Colors.blue[50],
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Icon(Icons.description, size: 28, color: Colors.blueAccent),
+                child: Icon(
+                  isCustom ? Icons.edit_note : Icons.description,
+                  size: 28,
+                  color: isCustom ? Colors.purple : Colors.blueAccent,
+                ),
               ),
               const SizedBox(width: 14),
 
@@ -113,12 +239,15 @@ class ScriptGuideScreen extends StatelessWidget {
                       style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
                     ),
                     const SizedBox(height: 6),
-                    // 小標籤
                     Row(
                       children: [
                         _buildInfoChip('${script.steps.length} 站', Colors.blue),
                         const SizedBox(width: 6),
                         _buildInfoChip('${script.totalDuration} 秒', Colors.orange),
+                        if (isCustom) ...[
+                          const SizedBox(width: 6),
+                          _buildInfoChip('自訂', Colors.purple),
+                        ],
                       ],
                     ),
                   ],
@@ -133,7 +262,6 @@ class ScriptGuideScreen extends StatelessWidget {
     );
   }
 
-  /// 小標籤元件
   Widget _buildInfoChip(String text, MaterialColor color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -148,8 +276,8 @@ class ScriptGuideScreen extends StatelessWidget {
     );
   }
 
-  /// 點擊模板 → 顯示步驟詳情底部彈窗
-  void _showScriptDetail(BuildContext context, ShootingScript script) {
+  /// 點擊模板 → 步驟詳情底部彈窗
+  void _showScriptDetail(BuildContext context, ShootingScript script, {bool isCustom = false}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -192,6 +320,29 @@ class ScriptGuideScreen extends StatelessWidget {
               ),
             ),
 
+            // 自訂模板的編輯/刪除按鈕
+            if (isCustom)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _navigateToEditor(script: script);
+                      },
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text('編輯'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => _confirmDelete(ctx, script),
+                      icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                      label: const Text('刪除', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              ),
+
             const Divider(),
 
             // 步驟列表
@@ -215,7 +366,7 @@ class ScriptGuideScreen extends StatelessWidget {
                 height: 56,
                 child: FilledButton.icon(
                   onPressed: () {
-                    Navigator.pop(ctx); // 關閉底部彈窗
+                    Navigator.pop(ctx);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -234,14 +385,38 @@ class ScriptGuideScreen extends StatelessWidget {
     );
   }
 
-  /// 單一步驟的行
+  /// 確認刪除對話框
+  void _confirmDelete(BuildContext sheetCtx, ShootingScript script) {
+    showDialog(
+      context: sheetCtx,
+      builder: (ctx) => AlertDialog(
+        title: const Text('刪除腳本'),
+        content: Text('確定要刪除「${script.name}」嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);       // 關閉對話框
+              Navigator.pop(sheetCtx);  // 關閉底部彈窗
+              await _storage.deleteCustomScript(script.id);
+              _loadCustomScripts();
+            },
+            child: const Text('刪除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStepRow(int number, ScriptStep step) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 步驟編號
           CircleAvatar(
             backgroundColor: Colors.blueAccent,
             radius: 16,
@@ -251,8 +426,6 @@ class ScriptGuideScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-
-          // 步驟內容
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
