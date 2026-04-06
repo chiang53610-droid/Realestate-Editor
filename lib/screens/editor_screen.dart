@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:image_picker/image_picker.dart';
 import '../providers/video_provider.dart';
 import '../models/work_item.dart';
 import '../services/video_export_service.dart';
@@ -25,6 +26,7 @@ class _EditorScreenState extends State<EditorScreen> {
   final VideoExportService _exportService = VideoExportService();
   final StorageService _storageService = StorageService();
   bool _isExporting = false;
+  bool _isReorderMode = false; // 排序模式
 
   // ====== 裁剪功能 ======
   bool _isTrimMode = false;         // 是否處於裁剪模式
@@ -145,8 +147,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   _buildVideoPlayer(),
                   _buildTimeline(),
                   if (_isTrimMode && _isPlayerReady) _buildTrimControls(),
-                  if (videos.length > 1) _buildVideoTabs(videos.length),
-                  _buildTrimButton(),
+                  _buildVideoTabs(videos.length),
+                  if (!_isReorderMode) _buildTrimButton(),
                 ],
               ),
             ),
@@ -442,38 +444,319 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  // 多段影片的切換標籤
+  // 多段影片的切換標籤 + 排序按鈕
   Widget _buildVideoTabs(int videoCount) {
-    return SizedBox(
-      height: 50,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: videoCount,
-        itemBuilder: (context, index) {
-          final isActive = index == _currentVideoIndex;
-          final hasTrim = _trimRanges.containsKey(index);
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: ChoiceChip(
-              label: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('片段 ${index + 1}'),
-                  // 已裁剪的影片顯示剪刀小圖示
-                  if (hasTrim) ...[
-                    const SizedBox(width: 4),
-                    const Icon(Icons.content_cut, size: 14),
-                  ],
-                ],
+    return Column(
+      children: [
+        // 標籤列 + 操作按鈕
+        SizedBox(
+          height: 50,
+          child: Row(
+            children: [
+              // 影片標籤（可橫向滾動）
+              Expanded(
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(left: 12),
+                  itemCount: videoCount,
+                  itemBuilder: (context, index) {
+                    final isActive = index == _currentVideoIndex;
+                    final hasTrim = _trimRanges.containsKey(index);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: ChoiceChip(
+                        label: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('片段 ${index + 1}'),
+                            if (hasTrim) ...[
+                              const SizedBox(width: 4),
+                              const Icon(Icons.content_cut, size: 14),
+                            ],
+                          ],
+                        ),
+                        selected: isActive,
+                        onSelected: _isReorderMode ? null : (_) => _switchVideo(index),
+                      ),
+                    );
+                  },
+                ),
               ),
-              selected: isActive,
-              onSelected: (_) => _switchVideo(index),
-            ),
-          );
-        },
+              // 排序按鈕
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: IconButton(
+                  icon: Icon(
+                    _isReorderMode ? Icons.check_circle : Icons.swap_vert,
+                    color: _isReorderMode ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                  ),
+                  tooltip: _isReorderMode ? '完成排序' : '排列影片',
+                  onPressed: () {
+                    setState(() => _isReorderMode = !_isReorderMode);
+                  },
+                ),
+              ),
+              // 新增影片按鈕
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: IconButton(
+                  icon: const Icon(Icons.add_circle_outline, color: Color(0xFF1A56DB)),
+                  tooltip: '新增影片',
+                  onPressed: _addMoreVideos,
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // 排序模式：可拖曳排列的列表
+        if (_isReorderMode) _buildReorderPanel(),
+      ],
+    );
+  }
+
+  // ====================================================
+  //  排序面板 — 拖曳排列影片順序
+  // ====================================================
+  Widget _buildReorderPanel() {
+    final videos = context.read<VideoProvider>().selectedVideos;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 標題
+          const Row(
+            children: [
+              Icon(Icons.swap_vert, size: 18, color: Color(0xFF1A56DB)),
+              SizedBox(width: 6),
+              Text(
+                '拖曳調整影片順序',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // 可拖曳列表
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: videos.length,
+            onReorder: _onReorder,
+            itemBuilder: (context, index) {
+              final fileName = videos[index].name;
+              final hasTrim = _trimRanges.containsKey(index);
+              final isActive = index == _currentVideoIndex;
+
+              return Container(
+                key: ValueKey('video_$index'),
+                margin: const EdgeInsets.only(bottom: 6),
+                decoration: BoxDecoration(
+                  color: isActive ? const Color(0xFFEFF6FF) : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isActive ? const Color(0xFF1A56DB) : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                child: ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.only(left: 12, right: 4),
+                  leading: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: isActive ? const Color(0xFF1A56DB) : const Color(0xFFE2E8F0),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isActive ? Colors.white : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    '片段 ${index + 1}',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    fileName.length > 25 ? '${fileName.substring(0, 25)}...' : fileName,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (hasTrim)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Icon(Icons.content_cut, size: 16, color: Color(0xFFEA580C)),
+                        ),
+                      // 移除按鈕（至少保留 1 段）
+                      if (videos.length > 1)
+                        IconButton(
+                          icon: const Icon(Icons.remove_circle_outline, size: 20, color: Colors.red),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: () => _removeVideo(index),
+                        ),
+                      // 拖曳手柄
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Icon(Icons.drag_handle, color: Color(0xFF94A3B8)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
+  }
+
+  /// 拖曳排序回調
+  void _onReorder(int oldIndex, int newIndex) {
+    final provider = context.read<VideoProvider>();
+
+    // 同步更新裁剪區間的索引
+    final newTrimRanges = <int, List<double>>{};
+    final adjustedNewIndex = newIndex > oldIndex ? newIndex - 1 : newIndex;
+
+    // 計算每個舊索引對應的新索引
+    for (final entry in _trimRanges.entries) {
+      int idx = entry.key;
+      if (idx == oldIndex) {
+        idx = adjustedNewIndex;
+      } else {
+        if (oldIndex < idx && idx <= adjustedNewIndex) {
+          idx--;
+        } else if (adjustedNewIndex <= idx && idx < oldIndex) {
+          idx++;
+        }
+      }
+      newTrimRanges[idx] = entry.value;
+    }
+    _trimRanges.clear();
+    _trimRanges.addAll(newTrimRanges);
+
+    // 更新當前播放索引
+    if (_currentVideoIndex == oldIndex) {
+      _currentVideoIndex = adjustedNewIndex;
+    } else if (oldIndex < _currentVideoIndex && _currentVideoIndex <= adjustedNewIndex) {
+      _currentVideoIndex--;
+    } else if (adjustedNewIndex <= _currentVideoIndex && _currentVideoIndex < oldIndex) {
+      _currentVideoIndex++;
+    }
+
+    provider.reorderVideo(oldIndex, newIndex);
+    setState(() {});
+  }
+
+  /// 移除單段影片
+  void _removeVideo(int index) {
+    final provider = context.read<VideoProvider>();
+    if (provider.selectedVideos.length <= 1) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('移除影片'),
+        content: Text('確定要移除片段 ${index + 1} 嗎？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+
+              // 移除裁剪區間
+              _trimRanges.remove(index);
+              // 重新映射索引
+              final newTrimRanges = <int, List<double>>{};
+              for (final entry in _trimRanges.entries) {
+                final newIdx = entry.key > index ? entry.key - 1 : entry.key;
+                newTrimRanges[newIdx] = entry.value;
+              }
+              _trimRanges.clear();
+              _trimRanges.addAll(newTrimRanges);
+
+              // 調整當前播放索引
+              if (_currentVideoIndex >= provider.selectedVideos.length - 1) {
+                _currentVideoIndex = provider.selectedVideos.length - 2;
+                if (_currentVideoIndex < 0) _currentVideoIndex = 0;
+              } else if (_currentVideoIndex > index) {
+                _currentVideoIndex--;
+              }
+
+              provider.removeVideo(index);
+
+              // 重新初始化播放器
+              setState(() => _isPlayerReady = false);
+              _controller.removeListener(_onPlayerTick);
+              await _controller.dispose();
+              final videos = provider.selectedVideos;
+              final file = File(videos[_currentVideoIndex].path);
+              _controller = VideoPlayerController.file(file);
+              await _controller.initialize();
+              _controller.addListener(_onPlayerTick);
+              _loadTrimRange();
+              setState(() => _isPlayerReady = true);
+
+              if (mounted) {
+                _showAiMessage('已移除片段');
+              }
+            },
+            child: const Text('確定移除', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 新增更多影片
+  Future<void> _addMoreVideos() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickMultipleMedia();
+    if (picked.isEmpty) return;
+
+    final provider = context.read<VideoProvider>();
+    int addedCount = 0;
+    for (final file in picked) {
+      if (file.path.endsWith('.mp4') ||
+          file.path.endsWith('.mov') ||
+          file.path.endsWith('.m4v') ||
+          file.path.endsWith('.avi')) {
+        provider.addVideo(file);
+        addedCount++;
+      }
+    }
+
+    if (addedCount > 0) {
+      setState(() {});
+      _showAiMessage('已新增 $addedCount 段影片');
+    } else {
+      _showAiMessage('未選擇有效的影片檔案');
+    }
   }
 
   // 三個 AI 功能按鈕

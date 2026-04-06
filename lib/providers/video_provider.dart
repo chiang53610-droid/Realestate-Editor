@@ -28,6 +28,20 @@ class VideoProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // 重新排序影片（拖曳排列）
+  void reorderVideo(int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex--;
+    final item = _selectedVideos.removeAt(oldIndex);
+    _selectedVideos.insert(newIndex, item);
+    notifyListeners();
+  }
+
+  // 在指定位置插入影片
+  void insertVideo(int index, XFile video) {
+    _selectedVideos.insert(index, video);
+    notifyListeners();
+  }
+
   // 清空所有已選影片
   void clearVideos() {
     _selectedVideos.clear();
