@@ -1,7 +1,19 @@
 PODS:
+  - ffmpeg-kit-macos-min (6.0)
+  - ffmpeg_kit_flutter_min (6.0.3):
+    - ffmpeg_kit_flutter_min/min (= 6.0.3)
+    - FlutterMacOS
+  - ffmpeg_kit_flutter_min/min (6.0.3):
+    - ffmpeg-kit-macos-min (= 6.0)
+    - FlutterMacOS
   - file_selector_macos (0.0.1):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
+  - gal (1.0.0):
+    - Flutter
+    - FlutterMacOS
+  - share_plus (0.0.1):
+    - FlutterMacOS
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -10,27 +22,43 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
+  - ffmpeg-kit-macos-min (from `ffmpeg_kit_stub`)
+  - ffmpeg_kit_flutter_min (from `Flutter/ephemeral/.symlinks/plugins/ffmpeg_kit_flutter_min/macos`)
   - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - gal (from `Flutter/ephemeral/.symlinks/plugins/gal/darwin`)
+  - share_plus (from `Flutter/ephemeral/.symlinks/plugins/share_plus/macos`)
   - shared_preferences_foundation (from `Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin`)
   - video_player_avfoundation (from `Flutter/ephemeral/.symlinks/plugins/video_player_avfoundation/darwin`)
 
 EXTERNAL SOURCES:
+  ffmpeg-kit-macos-min:
+    :path: ffmpeg_kit_stub
+  ffmpeg_kit_flutter_min:
+    :path: Flutter/ephemeral/.symlinks/plugins/ffmpeg_kit_flutter_min/macos
   file_selector_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
+  gal:
+    :path: Flutter/ephemeral/.symlinks/plugins/gal/darwin
+  share_plus:
+    :path: Flutter/ephemeral/.symlinks/plugins/share_plus/macos
   shared_preferences_foundation:
     :path: Flutter/ephemeral/.symlinks/plugins/shared_preferences_foundation/darwin
   video_player_avfoundation:
     :path: Flutter/ephemeral/.symlinks/plugins/video_player_avfoundation/darwin
 
 SPEC CHECKSUMS:
+  ffmpeg-kit-macos-min: 69bf47074f6de4c1094bd743dd03daacfb8a3474
+  ffmpeg_kit_flutter_min: 0fac87fabe7f2ba333e3f53bc8b6b704c4b4044f
   file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  gal: baecd024ebfd13c441269ca7404792a7152fde89
+  share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   video_player_avfoundation: dd410b52df6d2466a42d28550e33e4146928280a
 
-PODFILE CHECKSUM: 54d867c82ac51cbd61b565781b9fada492027009
+PODFILE CHECKSUM: d1de0e1bd8828777789d946d725872847cd02ce8
 
 COCOAPODS: 1.16.2
