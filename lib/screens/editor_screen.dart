@@ -24,44 +24,104 @@ class _EditorScreenState extends State<EditorScreen> {
   final StorageService _storageService = StorageService();
   bool _isExporting = false;
 
+  // ====== 裁剪功能 ======
+  bool _isTrimMode = false;         // 是否處於裁剪模式
+  double _trimStart = 0.0;          // 裁剪起點（0.0 ~ 1.0 比例）
+  double _trimEnd = 1.0;            // 裁剪終點（0.0 ~ 1.0 比例）
+  // 儲存每段影片的裁剪區間
+  final Map<int, List<double>> _trimRanges = {};
+
   @override
   void initState() {
     super.initState();
     _initPlayer();
   }
 
-  // 初始化影片播放器
   Future<void> _initPlayer() async {
     final videos = context.read<VideoProvider>().selectedVideos;
     final file = File(videos[_currentVideoIndex].path);
     _controller = VideoPlayerController.file(file);
     await _controller.initialize();
-    setState(() {
-      _isPlayerReady = true;
-    });
+    // 加入播放位置監聽，用於裁剪模式的即時回饋
+    _controller.addListener(_onPlayerTick);
+    _loadTrimRange();
+    setState(() => _isPlayerReady = true);
   }
 
-  // 切換到另一段影片
+  /// 載入此影片的裁剪區間（若有）
+  void _loadTrimRange() {
+    final range = _trimRanges[_currentVideoIndex];
+    if (range != null) {
+      _trimStart = range[0];
+      _trimEnd = range[1];
+    } else {
+      _trimStart = 0.0;
+      _trimEnd = 1.0;
+    }
+  }
+
+  /// 儲存目前影片的裁剪區間
+  void _saveTrimRange() {
+    _trimRanges[_currentVideoIndex] = [_trimStart, _trimEnd];
+  }
+
+  /// 播放器每幀回調 — 裁剪模式中限制播放範圍
+  void _onPlayerTick() {
+    if (!mounted || !_isPlayerReady) return;
+
+    if (_isTrimMode && _controller.value.isPlaying) {
+      final total = _controller.value.duration.inMilliseconds;
+      final current = _controller.value.position.inMilliseconds;
+      final endMs = (_trimEnd * total).round();
+
+      // 播放到裁剪終點時自動暫停
+      if (current >= endMs) {
+        _controller.pause();
+        _controller.seekTo(Duration(milliseconds: (_trimStart * total).round()));
+      }
+    }
+
+    // 更新 UI（播放進度）
+    if (_controller.value.isPlaying) {
+      setState(() {});
+    }
+  }
+
   Future<void> _switchVideo(int index) async {
     if (index == _currentVideoIndex) return;
-    setState(() {
-      _isPlayerReady = false;
-    });
+    // 儲存當前裁剪區間
+    if (_isTrimMode) _saveTrimRange();
+    setState(() => _isPlayerReady = false);
+    _controller.removeListener(_onPlayerTick);
     await _controller.dispose();
     _currentVideoIndex = index;
     final videos = context.read<VideoProvider>().selectedVideos;
     final file = File(videos[index].path);
     _controller = VideoPlayerController.file(file);
     await _controller.initialize();
-    setState(() {
-      _isPlayerReady = true;
-    });
+    _controller.addListener(_onPlayerTick);
+    _loadTrimRange();
+    setState(() => _isPlayerReady = true);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onPlayerTick);
     _controller.dispose();
     super.dispose();
+  }
+
+  /// 取得影片總時長的格式化字串
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  /// 根據比例值取得對應的時間
+  Duration _positionFromRatio(double ratio) {
+    final totalMs = _controller.value.duration.inMilliseconds;
+    return Duration(milliseconds: (ratio * totalMs).round());
   }
 
   @override
@@ -75,10 +135,22 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
       body: Column(
         children: [
-          _buildVideoPlayer(),
-          _buildTimeline(),
-          if (videos.length > 1) _buildVideoTabs(videos.length),
-          const Spacer(),
+          // 上半部：影片 + 裁剪（可捲動，避免 overflow）
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildVideoPlayer(),
+                  _buildTimeline(),
+                  if (_isTrimMode && _isPlayerReady) _buildTrimControls(),
+                  if (videos.length > 1) _buildVideoTabs(videos.length),
+                  _buildTrimButton(),
+                ],
+              ),
+            ),
+          ),
+
+          // 下半部：固定在底部的按鈕區
           _buildAiButtons(videoProvider),
           _buildExportButton(videoProvider),
           const SizedBox(height: 20),
@@ -104,9 +176,16 @@ class _EditorScreenState extends State<EditorScreen> {
                 GestureDetector(
                   onTap: () {
                     setState(() {
-                      _controller.value.isPlaying
-                          ? _controller.pause()
-                          : _controller.play();
+                      if (_controller.value.isPlaying) {
+                        _controller.pause();
+                      } else {
+                        // 裁剪模式下從起點開始播放
+                        if (_isTrimMode) {
+                          final startPos = _positionFromRatio(_trimStart);
+                          _controller.seekTo(startPos);
+                        }
+                        _controller.play();
+                      }
                     });
                   },
                   child: Icon(
@@ -117,6 +196,23 @@ class _EditorScreenState extends State<EditorScreen> {
                     color: Colors.white70,
                   ),
                 ),
+                // 裁剪模式時顯示裁剪區間時間
+                if (_isTrimMode)
+                  Positioned(
+                    top: 8,
+                    right: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${_formatDuration(_positionFromRatio(_trimStart))} — ${_formatDuration(_positionFromRatio(_trimEnd))}',
+                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                      ),
+                    ),
+                  ),
               ],
             )
           : const Center(
@@ -125,21 +221,222 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  // 簡易時間軸
+  // 時間軸（裁剪模式下顯示裁剪範圍覆蓋層）
   Widget _buildTimeline() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: _isPlayerReady
-          ? VideoProgressIndicator(
-              _controller,
-              allowScrubbing: true,
-              colors: const VideoProgressColors(
-                playedColor: Colors.blueAccent,
-                bufferedColor: Colors.lightBlueAccent,
-                backgroundColor: Colors.grey,
-              ),
+          ? Stack(
+              children: [
+                VideoProgressIndicator(
+                  _controller,
+                  allowScrubbing: !_isTrimMode, // 裁剪模式下禁用原生拖曳
+                  colors: const VideoProgressColors(
+                    playedColor: Colors.blueAccent,
+                    bufferedColor: Colors.lightBlueAccent,
+                    backgroundColor: Colors.grey,
+                  ),
+                ),
+                // 裁剪模式：顯示灰色遮罩（被裁掉的部分）
+                if (_isTrimMode)
+                  Positioned.fill(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        return Stack(
+                          children: [
+                            // 左側灰色遮罩
+                            Positioned(
+                              left: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: width * _trimStart,
+                              child: Container(color: Colors.black45),
+                            ),
+                            // 右側灰色遮罩
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: width * (1.0 - _trimEnd),
+                              child: Container(color: Colors.black45),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+              ],
             )
           : const LinearProgressIndicator(),
+    );
+  }
+
+  // ====================================================
+  //  裁剪操控區 — 雙滑桿 + 時間標示
+  // ====================================================
+  Widget _buildTrimControls() {
+    final total = _controller.value.duration;
+    final startTime = _formatDuration(_positionFromRatio(_trimStart));
+    final endTime = _formatDuration(_positionFromRatio(_trimEnd));
+    final trimDuration = _positionFromRatio(_trimEnd) - _positionFromRatio(_trimStart);
+    final trimDurText = _formatDuration(trimDuration);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 標題列
+          Row(
+            children: [
+              const Icon(Icons.content_cut, size: 18, color: Color(0xFF1A56DB)),
+              const SizedBox(width: 6),
+              const Text(
+                '裁剪片段',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const Spacer(),
+              // 裁剪後時長
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A56DB),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '保留 $trimDurText',
+                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // 起點滑桿
+          Row(
+            children: [
+              const SizedBox(width: 50, child: Text('起點', style: TextStyle(fontSize: 13, color: Color(0xFF64748B)))),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    activeTrackColor: Colors.green[400],
+                    inactiveTrackColor: Colors.grey[300],
+                    thumbColor: Colors.green,
+                  ),
+                  child: Slider(
+                    value: _trimStart,
+                    min: 0.0,
+                    max: _trimEnd - 0.01, // 不能超過終點
+                    onChanged: (v) {
+                      setState(() => _trimStart = v);
+                      _controller.seekTo(_positionFromRatio(v));
+                    },
+                    onChangeEnd: (_) => _saveTrimRange(),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 50,
+                child: Text(startTime, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+
+          // 終點滑桿
+          Row(
+            children: [
+              const SizedBox(width: 50, child: Text('終點', style: TextStyle(fontSize: 13, color: Color(0xFF64748B)))),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                    activeTrackColor: Colors.red[400],
+                    inactiveTrackColor: Colors.grey[300],
+                    thumbColor: Colors.red,
+                  ),
+                  child: Slider(
+                    value: _trimEnd,
+                    min: _trimStart + 0.01, // 不能低於起點
+                    max: 1.0,
+                    onChanged: (v) {
+                      setState(() => _trimEnd = v);
+                      _controller.seekTo(_positionFromRatio(v));
+                    },
+                    onChangeEnd: (_) => _saveTrimRange(),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 50,
+                child: Text(endTime, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // 總時長資訊
+          Text(
+            '影片總長 ${_formatDuration(total)}',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ====================================================
+  //  裁剪模式切換按鈕
+  // ====================================================
+  Widget _buildTrimButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: SizedBox(
+        width: double.infinity,
+        height: 44,
+        child: OutlinedButton.icon(
+          onPressed: _isPlayerReady
+              ? () {
+                  setState(() {
+                    _isTrimMode = !_isTrimMode;
+                    if (_isTrimMode) {
+                      _controller.pause();
+                      _loadTrimRange();
+                    }
+                  });
+                }
+              : null,
+          icon: Icon(
+            _isTrimMode ? Icons.check : Icons.content_cut,
+            size: 20,
+          ),
+          label: Text(
+            _isTrimMode ? '完成裁剪' : '裁剪影片',
+            style: const TextStyle(fontSize: 15),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _isTrimMode ? Colors.green : const Color(0xFF1A56DB),
+            side: BorderSide(
+              color: _isTrimMode ? Colors.green : const Color(0xFF1A56DB),
+            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
     );
   }
 
@@ -153,10 +450,21 @@ class _EditorScreenState extends State<EditorScreen> {
         itemCount: videoCount,
         itemBuilder: (context, index) {
           final isActive = index == _currentVideoIndex;
+          final hasTrim = _trimRanges.containsKey(index);
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: ChoiceChip(
-              label: Text('片段 ${index + 1}'),
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('片段 ${index + 1}'),
+                  // 已裁剪的影片顯示剪刀小圖示
+                  if (hasTrim) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.content_cut, size: 14),
+                  ],
+                ],
+              ),
               selected: isActive,
               onSelected: (_) => _switchVideo(index),
             ),
@@ -199,7 +507,6 @@ class _EditorScreenState extends State<EditorScreen> {
             onTap: () {
               provider.toggleBusinessCard();
               if (provider.aiBusinessCard) {
-                // 啟用時自動跳轉到名片編輯頁
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const BusinessCardScreen()),
@@ -295,8 +602,8 @@ class _EditorScreenState extends State<EditorScreen> {
       addBusinessCard: provider.aiBusinessCard,
     );
 
-    // 儲存作品紀錄到本地
     final now = DateTime.now();
+    final hasTrim = _trimRanges.isNotEmpty;
     final work = WorkItem(
       id: now.millisecondsSinceEpoch.toString(),
       title: '房仲影片 ${now.month}/${now.day} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
@@ -309,7 +616,8 @@ class _EditorScreenState extends State<EditorScreen> {
     await _storageService.saveWork(work);
 
     setState(() => _isExporting = false);
-    _showAiMessage('${result.message} 已儲存到作品集');
+    final trimNote = hasTrim ? '（含裁剪）' : '';
+    _showAiMessage('${result.message}$trimNote 已儲存到作品集');
   }
 
   // 顯示提示訊息
