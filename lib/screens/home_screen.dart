@@ -4,6 +4,7 @@ import 'pick_video_screen.dart';
 import 'portfolio_screen.dart';
 import 'script_guide_screen.dart';
 import 'business_card_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -14,6 +15,17 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('AI 房仲剪輯'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
