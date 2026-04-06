@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../providers/video_provider.dart';
 import '../models/work_item.dart';
-import '../services/ai_api_service.dart';
+import '../services/video_export_service.dart';
 import '../services/storage_service.dart';
 import 'business_card_screen.dart';
 
@@ -20,7 +20,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _isPlayerReady = false;
   int _currentVideoIndex = 0;
 
-  final AiApiService _aiService = AiApiService();
+  final VideoExportService _exportService = VideoExportService();
   final StorageService _storageService = StorageService();
   bool _isExporting = false;
 
@@ -592,16 +592,28 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 處理匯出流程
   Future<void> _handleExport(VideoProvider provider) async {
+    // 如果正在裁剪模式，先儲存當前裁剪範圍
+    if (_isTrimMode) _saveTrimRange();
+
     setState(() => _isExporting = true);
 
     final paths = provider.selectedVideos.map((v) => v.path).toList();
-    final result = await _aiService.exportVideo(
+
+    // 使用 VideoExportService 進行真實影片合併/裁剪
+    final exportResult = await _exportService.mergeAndExport(
       videoPaths: paths,
-      removeFiller: provider.aiRemoveFiller,
-      addSubtitles: provider.aiSubtitle,
-      addBusinessCard: provider.aiBusinessCard,
+      trimRanges: _trimRanges.isNotEmpty ? _trimRanges : null,
     );
 
+    if (!mounted) return;
+
+    if (!exportResult.success) {
+      setState(() => _isExporting = false);
+      _showAiMessage(exportResult.message);
+      return;
+    }
+
+    // 儲存作品紀錄
     final now = DateTime.now();
     final hasTrim = _trimRanges.isNotEmpty;
     final work = WorkItem(
@@ -617,7 +629,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     setState(() => _isExporting = false);
     final trimNote = hasTrim ? '（含裁剪）' : '';
-    _showAiMessage('${result.message}$trimNote 已儲存到作品集');
+    _showAiMessage('${exportResult.message}$trimNote 已儲存到作品集');
   }
 
   // 顯示提示訊息
