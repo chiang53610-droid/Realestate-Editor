@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:gal/gal.dart';
 import '../models/work_item.dart';
 import '../services/storage_service.dart';
 
@@ -168,6 +170,24 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                             style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                           ),
                           const Spacer(),
+                          // 分享按鈕
+                          if (hasVideo)
+                            _buildActionButton(
+                              icon: Icons.share,
+                              label: '分享',
+                              color: const Color(0xFF0891B2),
+                              onTap: () => _shareVideo(work),
+                            ),
+                          if (hasVideo) const SizedBox(width: 2),
+                          // 存到相簿
+                          if (hasVideo && (Platform.isIOS || Platform.isAndroid))
+                            _buildActionButton(
+                              icon: Icons.save_alt,
+                              label: '存相簿',
+                              color: const Color(0xFF16A34A),
+                              onTap: () => _saveToGallery(work),
+                            ),
+                          if (hasVideo) const SizedBox(width: 2),
                           // 播放按鈕
                           if (hasVideo)
                             _buildActionButton(
@@ -176,7 +196,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                               color: const Color(0xFF1A56DB),
                               onTap: () => _openPlayer(work),
                             ),
-                          if (hasVideo) const SizedBox(width: 4),
+                          const SizedBox(width: 2),
                           // 刪除按鈕
                           _buildActionButton(
                             icon: Icons.delete_outline,
@@ -258,6 +278,39 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
       ),
     );
+  }
+
+  // ====== 分享影片 ======
+  Future<void> _shareVideo(WorkItem work) async {
+    if (work.outputPath == null) return;
+    try {
+      await Share.shareXFiles(
+        [XFile(work.outputPath!)],
+        text: '我用 AI 房仲剪輯製作的影片',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('分享失敗：$e'), duration: const Duration(seconds: 2)),
+      );
+    }
+  }
+
+  // ====== 儲存到相簿 ======
+  Future<void> _saveToGallery(WorkItem work) async {
+    if (work.outputPath == null) return;
+    try {
+      await Gal.putVideo(work.outputPath!);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已儲存到相簿'), duration: Duration(seconds: 1)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('儲存失敗：$e'), duration: const Duration(seconds: 2)),
+      );
+    }
   }
 
   // ====== 播放影片 ======
@@ -466,6 +519,25 @@ class _VideoPlayerPageState extends State<_VideoPlayerPage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         title: Text(widget.title, style: const TextStyle(fontSize: 16)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: '分享影片',
+            onPressed: () async {
+              try {
+                await Share.shareXFiles(
+                  [XFile(widget.videoPath)],
+                  text: '我用 AI 房仲剪輯製作的影片',
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('分享失敗：$e')),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: _isReady
           ? Column(

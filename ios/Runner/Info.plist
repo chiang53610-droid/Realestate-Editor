@@ -6,6 +6,8 @@
 	<string>需要相機權限來拍攝房屋影片</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>需要麥克風權限來錄製影片聲音</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>需要相簿寫入權限來儲存匯出的影片</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

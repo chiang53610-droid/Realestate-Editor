@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:gal/gal.dart';
+import 'package:share_plus/share_plus.dart';
 import '../providers/video_provider.dart';
 import '../models/work_item.dart';
 import '../services/video_export_service.dart';
@@ -613,9 +615,20 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    // 嘗試儲存到相簿（僅 iOS/Android）
+    bool savedToGallery = false;
+    if (exportResult.outputPath != null &&
+        (Platform.isIOS || Platform.isAndroid)) {
+      try {
+        await Gal.putVideo(exportResult.outputPath!);
+        savedToGallery = true;
+      } catch (_) {
+        // 儲存到相簿失敗不阻擋流程
+      }
+    }
+
     // 儲存作品紀錄
     final now = DateTime.now();
-    final hasTrim = _trimRanges.isNotEmpty;
     final work = WorkItem(
       id: now.millisecondsSinceEpoch.toString(),
       title: '房仲影片 ${now.month}/${now.day} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
@@ -629,8 +642,87 @@ class _EditorScreenState extends State<EditorScreen> {
     await _storageService.saveWork(work);
 
     setState(() => _isExporting = false);
-    final trimNote = hasTrim ? '（含裁剪）' : '';
-    _showAiMessage('${exportResult.message}$trimNote 已儲存到作品集');
+    if (!mounted) return;
+
+    // 顯示匯出成功對話框
+    _showExportSuccessDialog(
+      outputPath: exportResult.outputPath,
+      savedToGallery: savedToGallery,
+    );
+  }
+
+  /// 匯出成功對話框 — 提供存到相簿 / 分享 / 關閉
+  void _showExportSuccessDialog({
+    String? outputPath,
+    bool savedToGallery = false,
+  }) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFF16A34A).withAlpha(25),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text('匯出完成'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (savedToGallery)
+              const Text('影片已自動儲存到您的相簿！',
+                  style: TextStyle(fontSize: 15, color: Color(0xFF16A34A))),
+            if (!savedToGallery && (Platform.isIOS || Platform.isAndroid))
+              const Text('影片已匯出完成',
+                  style: TextStyle(fontSize: 15)),
+            if (!Platform.isIOS && !Platform.isAndroid)
+              const Text('影片已匯出完成（桌面版模擬）',
+                  style: TextStyle(fontSize: 15)),
+            const SizedBox(height: 8),
+            const Text('已儲存到作品集',
+                style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
+          ],
+        ),
+        actions: [
+          // 分享按鈕
+          if (outputPath != null && File(outputPath).existsSync())
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _shareVideo(outputPath);
+              },
+              icon: const Icon(Icons.share, size: 18),
+              label: const Text('分享影片'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('完成'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 分享影片檔案
+  Future<void> _shareVideo(String filePath) async {
+    try {
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: '我用 AI 房仲剪輯製作的影片',
+      );
+    } catch (e) {
+      _showAiMessage('分享失敗：$e');
+    }
   }
 
   // 顯示提示訊息
