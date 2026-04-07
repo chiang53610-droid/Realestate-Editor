@@ -14,6 +14,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final StorageService _storage = StorageService();
   BusinessCard _card = const BusinessCard();
+  String _geminiApiKey = '';
   bool _isLoading = true;
 
   @override
@@ -24,8 +25,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadData() async {
     final card = await _storage.loadBusinessCard();
+    final apiKey = await _storage.loadGeminiApiKey();
     setState(() {
       _card = card;
+      _geminiApiKey = apiKey;
       _isLoading = false;
     });
   }
@@ -41,6 +44,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 // ====== 個人資料卡片 ======
                 _buildProfileCard(),
+
+                const SizedBox(height: 20),
+
+                // ====== AI 設定 ======
+                _buildSectionTitle('AI 設定'),
+                const SizedBox(height: 8),
+                _buildSettingItem(
+                  icon: Icons.key,
+                  title: 'Gemini API Key',
+                  subtitle: _geminiApiKey.isEmpty
+                      ? '尚未設定（AI 功能為模擬模式）'
+                      : '已設定 ✓（${_geminiApiKey.substring(0, 8)}...）',
+                  iconColor: _geminiApiKey.isEmpty
+                      ? Colors.grey
+                      : const Color(0xFF16A34A),
+                  onTap: () => _showApiKeyDialog(),
+                ),
 
                 const SizedBox(height: 20),
 
@@ -349,6 +369,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Gemini API Key 設定對話框
+  void _showApiKeyDialog() {
+    final controller = TextEditingController(text: _geminiApiKey);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.key, color: Color(0xFF1A56DB)),
+            SizedBox(width: 10),
+            Text('Gemini API Key'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '輸入你的 Google Gemini API Key 來啟用真實 AI 功能。',
+              style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '取得方式：前往 Google AI Studio 建立免費 API Key',
+              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'API Key',
+                hintText: '貼上你的 API Key',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                prefixIcon: const Icon(Icons.vpn_key, size: 20),
+              ),
+              obscureText: true,
+              maxLines: 1,
+            ),
+            const SizedBox(height: 12),
+            if (_geminiApiKey.isNotEmpty)
+              TextButton.icon(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await _storage.saveGeminiApiKey('');
+                  setState(() => _geminiApiKey = '');
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('API Key 已清除，AI 功能切回模擬模式')),
+                  );
+                },
+                icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                label: const Text('清除 API Key',
+                    style: TextStyle(color: Colors.red)),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final key = controller.text.trim();
+              Navigator.pop(ctx);
+              await _storage.saveGeminiApiKey(key);
+              setState(() => _geminiApiKey = key);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(key.isEmpty
+                      ? 'API Key 已清除'
+                      : 'API Key 已儲存，AI 功能已啟用！'),
+                ),
+              );
+            },
+            child: const Text('儲存'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 關於對話框
   void _showAbout() {
     showDialog(
@@ -385,7 +491,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               '• 智能提詞機\n'
               '• 影片裁剪與編輯\n'
               '• 名片片尾自動生成\n'
-              '• AI 去冗言與字幕',
+              '• AI 去冗言與字幕\n'
+              '• AI 智能成片\n\n'
+              'AI 引擎：Google Gemini 1.5 Flash',
               style: TextStyle(fontSize: 14, height: 1.6),
             ),
           ],

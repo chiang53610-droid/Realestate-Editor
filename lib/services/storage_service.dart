@@ -7,6 +7,7 @@ class StorageService {
   static const String _key = 'my_works';
   static const String _cardKey = 'business_card';
   static const String _scriptsKey = 'custom_scripts';
+  static const String _geminiKeyKey = 'gemini_api_key';
 
   // 讀取所有作品紀錄
   Future<List<WorkItem>> loadWorks() async {
@@ -82,5 +83,19 @@ class StorageService {
     final scripts = await loadCustomScripts();
     scripts.removeWhere((s) => s.id == id);
     await saveCustomScripts(scripts);
+  }
+
+  // ====== Gemini API Key ======
+
+  // 讀取 Gemini API Key
+  Future<String> loadGeminiApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_geminiKeyKey) ?? '';
+  }
+
+  // 儲存 Gemini API Key
+  Future<void> saveGeminiApiKey(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_geminiKeyKey, key.trim());
   }
 }

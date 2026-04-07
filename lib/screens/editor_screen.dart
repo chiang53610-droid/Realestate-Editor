@@ -9,6 +9,7 @@ import '../providers/video_provider.dart';
 import '../models/work_item.dart';
 import '../services/video_export_service.dart';
 import '../services/ai_api_service.dart';
+import '../services/gemini_service.dart';
 import '../services/storage_service.dart';
 import 'business_card_screen.dart';
 
@@ -25,7 +26,7 @@ class _EditorScreenState extends State<EditorScreen> {
   int _currentVideoIndex = 0;
 
   final VideoExportService _exportService = VideoExportService();
-  final AiApiService _aiService = AiApiService();
+  AiApiService _aiService = AiApiService(); // 預設 mock，載入 API key 後升級
   final StorageService _storageService = StorageService();
   bool _isExporting = false;
   String _exportStepText = ''; // 匯出步驟文字
@@ -42,6 +43,17 @@ class _EditorScreenState extends State<EditorScreen> {
   void initState() {
     super.initState();
     _initPlayer();
+    _loadGeminiApiKey();
+  }
+
+  /// 載入 Gemini API Key，如有則升級為真實 AI 模式
+  Future<void> _loadGeminiApiKey() async {
+    final key = await _storageService.loadGeminiApiKey();
+    if (key.isNotEmpty) {
+      _aiService = AiApiService(
+        geminiService: GeminiService(apiKey: key),
+      );
+    }
   }
 
   Future<void> _initPlayer() async {
@@ -991,6 +1003,8 @@ class _EditorScreenState extends State<EditorScreen> {
           videoPath: outputPath,
           agentName: card.name,
           phone: card.phone,
+          title: card.title,
+          company: card.company,
         );
         if (!mounted) return;
         if (result.success) {

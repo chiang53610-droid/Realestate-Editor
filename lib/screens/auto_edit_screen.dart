@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../models/clip_timeline.dart';
 import '../models/work_item.dart';
 import '../services/mock_ai_analysis_service.dart';
+import '../services/gemini_service.dart';
 import '../services/smart_export_service.dart';
 import '../services/storage_service.dart';
 
@@ -34,7 +35,7 @@ class _AutoEditScreenState extends State<AutoEditScreen>
   _AutoEditState _state = _AutoEditState.selectVideos;
 
   // 服務
-  final _aiService = MockAIAnalysisService();
+  MockAIAnalysisService _aiService = MockAIAnalysisService();
   final _exportService = SmartExportService();
   final _storageService = StorageService();
   final _picker = ImagePicker();
@@ -55,6 +56,7 @@ class _AutoEditScreenState extends State<AutoEditScreen>
   @override
   void initState() {
     super.initState();
+    _loadGeminiApiKey();
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -69,6 +71,16 @@ class _AutoEditScreenState extends State<AutoEditScreen>
     _animController.dispose();
     _playerController?.dispose();
     super.dispose();
+  }
+
+  /// 載入 Gemini API Key，如有則升級為真實 AI 模式
+  Future<void> _loadGeminiApiKey() async {
+    final key = await _storageService.loadGeminiApiKey();
+    if (key.isNotEmpty) {
+      _aiService = MockAIAnalysisService(
+        geminiService: GeminiService(apiKey: key),
+      );
+    }
   }
 
   // ======== 流程方法 ========
@@ -231,7 +243,10 @@ class _AutoEditScreenState extends State<AutoEditScreen>
       case _AutoEditState.selectVideos:
         return _buildSelectVideos();
       case _AutoEditState.analyzing:
-        return _buildLoadingScreen('AI 正在分析影片...', '智能識別最佳片段');
+        return _buildLoadingScreen(
+          'AI 正在分析影片...',
+          _aiService.isRealAI ? 'Gemini 1.5 Flash 智能識別最佳片段' : '智能識別最佳片段（模擬模式）',
+        );
       case _AutoEditState.showTimeline:
         return _buildTimelineView();
       case _AutoEditState.exporting:

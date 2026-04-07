@@ -1,61 +1,6 @@
-// 這是 Mock API 服務
-// 目前用「假等待 + 假回應」模擬後端 AI 處理
-// 未來只要把 _mock 方法換成真正的 http 呼叫即可
+import 'gemini_service.dart';
 
-class AiApiService {
-  // 模擬 AI 去冗言
-  Future<AiResult> removeFillerWords(String videoPath) async {
-    // 模擬等待後端處理 2 秒
-    await Future.delayed(const Duration(seconds: 2));
-    return AiResult(
-      success: true,
-      message: '已移除 12 處冗言贅詞',
-      outputPath: videoPath, // 未來會是處理後的新影片路徑
-    );
-  }
-
-  // 模擬 AI 上字幕
-  Future<AiResult> generateSubtitles(String videoPath) async {
-    await Future.delayed(const Duration(seconds: 3));
-    return AiResult(
-      success: true,
-      message: '已生成 45 句字幕',
-      outputPath: videoPath,
-    );
-  }
-
-  // 模擬生成房仲名片片尾
-  Future<AiResult> generateBusinessCard({
-    required String videoPath,
-    required String agentName,
-    required String phone,
-  }) async {
-    await Future.delayed(const Duration(seconds: 2));
-    return AiResult(
-      success: true,
-      message: '已生成 $agentName 的名片片尾',
-      outputPath: videoPath,
-    );
-  }
-
-  // 模擬匯出完整影片
-  Future<AiResult> exportVideo({
-    required List<String> videoPaths,
-    required bool removeFiller,
-    required bool addSubtitles,
-    required bool addBusinessCard,
-  }) async {
-    // 模擬較長的處理時間
-    await Future.delayed(const Duration(seconds: 4));
-    return AiResult(
-      success: true,
-      message: '影片匯出完成！',
-      outputPath: videoPaths.first,
-    );
-  }
-}
-
-// AI 處理結果的資料模型
+/// AI 處理結果
 class AiResult {
   final bool success;
   final String message;
@@ -66,4 +11,118 @@ class AiResult {
     required this.message,
     required this.outputPath,
   });
+}
+
+/// AI API 服務
+///
+/// 有 Gemini API Key → 呼叫真實 Gemini 1.5 Flash
+/// 沒有 API Key → 使用 Mock 模擬
+class AiApiService {
+  final GeminiService? _gemini;
+
+  AiApiService({GeminiService? geminiService}) : _gemini = geminiService;
+
+  bool get isRealAI => _gemini != null && _gemini.isConfigured;
+
+  // ========== AI 去冗言 ==========
+
+  Future<AiResult> removeFillerWords(String videoPath) async {
+    if (!isRealAI) return _mockRemoveFillerWords(videoPath);
+
+    try {
+      final result = await _gemini!.analyzeFillerWords(videoPath);
+      final summary = result['summary'] as String? ?? '分析完成';
+      return AiResult(success: true, message: summary, outputPath: videoPath);
+    } catch (e) {
+      return AiResult(
+        success: false,
+        message: 'AI 去冗言失敗：$e',
+        outputPath: videoPath,
+      );
+    }
+  }
+
+  // ========== AI 字幕 ==========
+
+  Future<AiResult> generateSubtitles(String videoPath) async {
+    if (!isRealAI) return _mockGenerateSubtitles(videoPath);
+
+    try {
+      final result = await _gemini!.generateSubtitles(videoPath);
+      final totalLines = result['totalLines'] as int? ?? 0;
+      return AiResult(
+        success: true,
+        message: '已生成 $totalLines 句字幕',
+        outputPath: videoPath,
+      );
+    } catch (e) {
+      return AiResult(
+        success: false,
+        message: 'AI 字幕失敗：$e',
+        outputPath: videoPath,
+      );
+    }
+  }
+
+  // ========== 名片片尾 ==========
+
+  Future<AiResult> generateBusinessCard({
+    required String videoPath,
+    required String agentName,
+    required String phone,
+    String title = '',
+    String company = '',
+  }) async {
+    if (!isRealAI) return _mockGenerateBusinessCard(videoPath, agentName);
+
+    try {
+      await _gemini!.generateBusinessCardScript(
+        agentName: agentName,
+        title: title,
+        company: company,
+        phone: phone,
+      );
+      return AiResult(
+        success: true,
+        message: '已生成 $agentName 的名片片尾',
+        outputPath: videoPath,
+      );
+    } catch (e) {
+      return AiResult(
+        success: false,
+        message: '名片片尾失敗：$e',
+        outputPath: videoPath,
+      );
+    }
+  }
+
+  // ========== Mock 方法（無 API Key 時使用） ==========
+
+  Future<AiResult> _mockRemoveFillerWords(String videoPath) async {
+    await Future.delayed(const Duration(seconds: 2));
+    return AiResult(
+      success: true,
+      message: '已移除 12 處冗言贅詞（模擬模式）',
+      outputPath: videoPath,
+    );
+  }
+
+  Future<AiResult> _mockGenerateSubtitles(String videoPath) async {
+    await Future.delayed(const Duration(seconds: 3));
+    return AiResult(
+      success: true,
+      message: '已生成 45 句字幕（模擬模式）',
+      outputPath: videoPath,
+    );
+  }
+
+  Future<AiResult> _mockGenerateBusinessCard(
+      String videoPath, String name) async {
+    await Future.delayed(const Duration(seconds: 2));
+    return AiResult(
+      success: true,
+      message: '已生成 $name 的名片片尾（模擬模式）',
+      outputPath: videoPath,
+    );
+  }
 }
