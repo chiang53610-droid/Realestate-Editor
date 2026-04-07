@@ -5,6 +5,7 @@ import 'pick_video_screen.dart';
 import 'portfolio_screen.dart';
 import 'script_guide_screen.dart';
 import 'business_card_screen.dart';
+import 'auto_edit_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -102,7 +103,20 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // 第三張卡片：名片片尾設定
+            // 第三張卡片：智能成片
+            _buildMenuCard(
+              icon: Icons.auto_awesome,
+              iconBgColor: const Color(0xFFF5F3FF),
+              iconColor: const Color(0xFF7C3AED),
+              title: '智能成片',
+              subtitle: 'AI 自動分析素材，一鍵生成專業影片',
+              onTap: () {
+                Navigator.push(context, FadeScaleRoute(page: const AutoEditScreen()));
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // 第四張卡片：名片片尾設定
             _buildMenuCard(
               icon: Icons.contact_mail,
               iconBgColor: const Color(0xFFFDF2F8),
@@ -115,7 +129,7 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // 第四張卡片：我的作品集
+            // 第五張卡片：我的作品集
             _buildMenuCard(
               icon: Icons.folder_special,
               iconBgColor: const Color(0xFFF0FDF4),
