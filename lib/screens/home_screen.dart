@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import '../utils/page_routes.dart';
 import 'pick_video_screen.dart';
 import 'portfolio_screen.dart';
 import 'script_guide_screen.dart';
@@ -19,10 +20,7 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
+              Navigator.push(context, SlideRoute(page: const SettingsScreen()));
             },
           ),
         ],
@@ -86,10 +84,7 @@ class HomeScreen extends StatelessWidget {
               title: '拍攝腳本指引',
               subtitle: '依照指引拍出專業影片',
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const ScriptGuideScreen()),
-                );
+                Navigator.push(context, FadeScaleRoute(page: const ScriptGuideScreen()));
               },
             ),
             const SizedBox(height: 12),
@@ -102,10 +97,7 @@ class HomeScreen extends StatelessWidget {
               title: '選擇影片一鍵剪輯',
               subtitle: '從相簿選擇素材，AI 自動剪輯',
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const PickVideoScreen()),
-                );
+                Navigator.push(context, FadeScaleRoute(page: const PickVideoScreen()));
               },
             ),
             const SizedBox(height: 12),
@@ -118,10 +110,7 @@ class HomeScreen extends StatelessWidget {
               title: '名片片尾設定',
               subtitle: '設定個人名片，影片結尾自動附加',
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const BusinessCardScreen()),
-                );
+                Navigator.push(context, FadeScaleRoute(page: const BusinessCardScreen()));
               },
             ),
             const SizedBox(height: 12),
@@ -134,10 +123,7 @@ class HomeScreen extends StatelessWidget {
               title: '我的作品集',
               subtitle: '查看已完成的影片作品',
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const PortfolioScreen()),
-                );
+                Navigator.push(context, FadeScaleRoute(page: const PortfolioScreen()));
               },
             ),
           ],

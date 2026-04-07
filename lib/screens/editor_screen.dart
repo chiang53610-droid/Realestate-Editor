@@ -133,32 +133,82 @@ class _EditorScreenState extends State<EditorScreen> {
     final videoProvider = context.watch<VideoProvider>();
     final videos = videoProvider.selectedVideos;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI 影片編輯'),
-      ),
-      body: Column(
-        children: [
-          // 上半部：影片 + 裁剪（可捲動，避免 overflow）
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _buildVideoPlayer(),
-                  _buildTimeline(),
-                  if (_isTrimMode && _isPlayerReady) _buildTrimControls(),
-                  _buildVideoTabs(videos.length),
-                  if (!_isReorderMode) _buildTrimButton(),
-                ],
-              ),
-            ),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text('AI 影片編輯'),
           ),
+          body: Column(
+            children: [
+              // 上半部：影片 + 裁剪（可捲動，避免 overflow）
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _buildVideoPlayer(),
+                      _buildTimeline(),
+                      if (_isTrimMode && _isPlayerReady) _buildTrimControls(),
+                      _buildVideoTabs(videos.length),
+                      if (!_isReorderMode) _buildTrimButton(),
+                    ],
+                  ),
+                ),
+              ),
 
-          // 下半部：固定在底部的按鈕區
-          _buildAiButtons(videoProvider),
-          _buildExportButton(videoProvider),
-          const SizedBox(height: 20),
-        ],
+              // 下半部：固定在底部的按鈕區
+              _buildAiButtons(videoProvider),
+              _buildExportButton(videoProvider),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+
+        // 匯出中的全螢幕載入動畫
+        if (_isExporting) _buildExportingOverlay(),
+      ],
+    );
+  }
+
+  // 匯出中的載入覆蓋層
+  Widget _buildExportingOverlay() {
+    return Container(
+      color: Colors.black54,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: CircularProgressIndicator(
+                  strokeWidth: 4,
+                  color: Color(0xFF1A56DB),
+                ),
+              ),
+              SizedBox(height: 20),
+              Text(
+                '影片匯出中...',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                '正在處理您的影片，請稍候',
+                style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
