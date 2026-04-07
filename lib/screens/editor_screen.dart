@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../providers/video_provider.dart';
 import '../models/work_item.dart';
 import '../services/video_export_service.dart';
+import '../services/ai_api_service.dart';
 import '../services/storage_service.dart';
 import 'business_card_screen.dart';
 
@@ -24,8 +25,10 @@ class _EditorScreenState extends State<EditorScreen> {
   int _currentVideoIndex = 0;
 
   final VideoExportService _exportService = VideoExportService();
+  final AiApiService _aiService = AiApiService();
   final StorageService _storageService = StorageService();
   bool _isExporting = false;
+  String _exportStepText = ''; // 匯出步驟文字
   bool _isReorderMode = false; // 排序模式
 
   // ====== 裁剪功能 ======
@@ -181,10 +184,10 @@ class _EditorScreenState extends State<EditorScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
           ),
-          child: const Column(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
+              const SizedBox(
                 width: 48,
                 height: 48,
                 child: CircularProgressIndicator(
@@ -192,17 +195,18 @@ class _EditorScreenState extends State<EditorScreen> {
                   color: Color(0xFF1A56DB),
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Text(
-                '影片匯出中...',
-                style: TextStyle(
+                _exportStepText.isNotEmpty ? _exportStepText : '影片匯出中...',
+                style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF1E293B),
                 ),
+                textAlign: TextAlign.center,
               ),
-              SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 8),
+              const Text(
                 '正在處理您的影片，請稍候',
                 style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
               ),
@@ -925,16 +929,24 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  // 處理匯出流程
+  // 更新匯出步驟文字
+  void _setExportStep(String text) {
+    if (mounted) setState(() => _exportStepText = text);
+  }
+
+  // 處理匯出流程（含 AI 功能整合）
   Future<void> _handleExport(VideoProvider provider) async {
     // 如果正在裁剪模式，先儲存當前裁剪範圍
     if (_isTrimMode) _saveTrimRange();
 
-    setState(() => _isExporting = true);
+    setState(() {
+      _isExporting = true;
+      _exportStepText = '影片合併中...';
+    });
 
     final paths = provider.selectedVideos.map((v) => v.path).toList();
 
-    // 使用 VideoExportService 進行真實影片合併/裁剪
+    // Step 1: 影片合併/裁剪
     final exportResult = await _exportService.mergeAndExport(
       videoPaths: paths,
       trimRanges: _trimRanges.isNotEmpty ? _trimRanges : null,
@@ -948,12 +960,54 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    final outputPath = exportResult.outputPath ?? paths.first;
+
+    // Step 2: AI 去冗言（如果啟用）
+    if (provider.aiRemoveFiller) {
+      _setExportStep('AI 去冗言處理中...');
+      final result = await _aiService.removeFillerWords(outputPath);
+      if (!mounted) return;
+      if (result.success) {
+        _showAiMessage(result.message);
+      }
+    }
+
+    // Step 3: AI 上字幕（如果啟用）
+    if (provider.aiSubtitle) {
+      _setExportStep('AI 字幕生成中...');
+      final result = await _aiService.generateSubtitles(outputPath);
+      if (!mounted) return;
+      if (result.success) {
+        _showAiMessage(result.message);
+      }
+    }
+
+    // Step 4: 名片片尾（如果啟用）
+    if (provider.aiBusinessCard) {
+      _setExportStep('名片片尾生成中...');
+      final card = await _storageService.loadBusinessCard();
+      if (!card.isEmpty) {
+        final result = await _aiService.generateBusinessCard(
+          videoPath: outputPath,
+          agentName: card.name,
+          phone: card.phone,
+        );
+        if (!mounted) return;
+        if (result.success) {
+          _showAiMessage(result.message);
+        }
+      }
+    }
+
+    if (!mounted) return;
+
+    _setExportStep('儲存中...');
+
     // 嘗試儲存到相簿（僅 iOS/Android）
     bool savedToGallery = false;
-    if (exportResult.outputPath != null &&
-        (Platform.isIOS || Platform.isAndroid)) {
+    if (Platform.isIOS || Platform.isAndroid) {
       try {
-        await Gal.putVideo(exportResult.outputPath!);
+        await Gal.putVideo(outputPath);
         savedToGallery = true;
       } catch (_) {
         // 儲存到相簿失敗不阻擋流程
@@ -970,7 +1024,7 @@ class _EditorScreenState extends State<EditorScreen> {
       usedRemoveFiller: provider.aiRemoveFiller,
       usedSubtitle: provider.aiSubtitle,
       usedBusinessCard: provider.aiBusinessCard,
-      outputPath: exportResult.outputPath,
+      outputPath: outputPath,
     );
     await _storageService.saveWork(work);
 
@@ -979,7 +1033,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // 顯示匯出成功對話框
     _showExportSuccessDialog(
-      outputPath: exportResult.outputPath,
+      outputPath: outputPath,
       savedToGallery: savedToGallery,
     );
   }
