@@ -16,7 +16,7 @@ import '../models/clip_timeline.dart';
 /// - >= 20MB：File API 上傳後送
 class GeminiService {
   static const _baseUrl = 'https://generativelanguage.googleapis.com';
-  static const _model = 'gemini-1.5-flash';
+  static const _model = 'gemini-2.0-flash';
   static const _maxInlineSize = 20 * 1024 * 1024; // 20MB
 
   final String apiKey;

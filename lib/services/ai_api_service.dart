@@ -1,15 +1,32 @@
 import 'gemini_service.dart';
 
+/// 單句字幕資料
+class SubtitleEntry {
+  final int index;
+  final double startTime;
+  final double endTime;
+  final String text;
+
+  SubtitleEntry({
+    required this.index,
+    required this.startTime,
+    required this.endTime,
+    required this.text,
+  });
+}
+
 /// AI 處理結果
 class AiResult {
   final bool success;
   final String message;
   final String outputPath;
+  final List<SubtitleEntry>? subtitles; // 字幕資料（僅 generateSubtitles 使用）
 
   AiResult({
     required this.success,
     required this.message,
     required this.outputPath,
+    this.subtitles,
   });
 }
 
@@ -49,11 +66,22 @@ class AiApiService {
 
     try {
       final result = await _gemini!.generateSubtitles(videoPath);
-      final totalLines = result['totalLines'] as int? ?? 0;
+      final rawSubs = (result['subtitles'] as List?) ?? [];
+      final subtitles = rawSubs
+          .map((s) => SubtitleEntry(
+                index: (s['index'] as num?)?.toInt() ?? 0,
+                startTime: (s['startTime'] as num?)?.toDouble() ?? 0.0,
+                endTime: (s['endTime'] as num?)?.toDouble() ?? 0.0,
+                text: (s['text'] as String?) ?? '',
+              ))
+          .where((s) => s.text.isNotEmpty)
+          .toList();
+
       return AiResult(
         success: true,
-        message: '已生成 $totalLines 句字幕',
+        message: '已生成 ${subtitles.length} 句字幕',
         outputPath: videoPath,
+        subtitles: subtitles,
       );
     } catch (e) {
       return AiResult(
@@ -109,10 +137,16 @@ class AiApiService {
 
   Future<AiResult> _mockGenerateSubtitles(String videoPath) async {
     await Future.delayed(const Duration(seconds: 3));
+    final mockSubs = [
+      SubtitleEntry(index: 1, startTime: 0.0, endTime: 2.5, text: '歡迎來到這間精美的房子'),
+      SubtitleEntry(index: 2, startTime: 2.5, endTime: 5.0, text: '首先我們來看客廳'),
+      SubtitleEntry(index: 3, startTime: 5.0, endTime: 8.0, text: '這裡的採光非常好'),
+    ];
     return AiResult(
       success: true,
-      message: '已生成 45 句字幕（模擬模式）',
+      message: '已生成 ${mockSubs.length} 句字幕（模擬模式）',
       outputPath: videoPath,
+      subtitles: mockSubs,
     );
   }
 

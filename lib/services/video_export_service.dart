@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:ffmpeg_kit_flutter_min/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_min/return_code.dart';
 import 'package:path_provider/path_provider.dart';
+import 'ai_api_service.dart';
 
 /// 影片匯出結果
 class ExportResult {
@@ -158,5 +159,258 @@ class VideoExportService {
       message: '${videoPaths.length} 段影片匯出完成！（桌面版模擬）',
       outputPath: videoPaths.first,
     );
+  }
+
+  // ========== 字幕燒錄 ==========
+
+  /// 將字幕燒錄進影片
+  ///
+  /// 桌面版：呼叫系統 ffmpeg（需 brew install ffmpeg）
+  /// 手機版：使用 FFmpegKit drawtext filter
+  Future<ExportResult> burnSubtitles({
+    required String videoPath,
+    required List<SubtitleEntry> subtitles,
+  }) async {
+    if (subtitles.isEmpty) {
+      return ExportResult(
+        success: true,
+        message: '無字幕可燒錄',
+        outputPath: videoPath,
+      );
+    }
+
+    try {
+      final dir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final outputPath = '${dir.path}/subtitled_$timestamp.mp4';
+
+      // 產生 SRT 字幕檔
+      final srtPath = '${dir.path}/subs_$timestamp.srt';
+      await File(srtPath).writeAsString(_generateSrt(subtitles));
+
+      ExportResult result;
+
+      if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+        // 桌面版：呼叫系統 ffmpeg
+        result = await _burnWithSystemFFmpeg(
+            videoPath, srtPath, outputPath, subtitles);
+      } else {
+        // 手機版：使用 FFmpegKit drawtext
+        result = await _burnWithDrawtext(
+            videoPath, subtitles, outputPath);
+      }
+
+      // 清理暫存 SRT
+      try { await File(srtPath).delete(); } catch (_) {}
+
+      return result;
+    } catch (e) {
+      return ExportResult(
+        success: false,
+        message: '字幕燒錄異常：$e',
+        outputPath: videoPath,
+      );
+    }
+  }
+
+  /// 桌面版：使用系統安裝的 ffmpeg 指令
+  Future<ExportResult> _burnWithSystemFFmpeg(
+    String videoPath,
+    String srtPath,
+    String outputPath,
+    List<SubtitleEntry> subtitles,
+  ) async {
+    try {
+      // 先確認系統有 ffmpeg
+      final check = await Process.run('which', ['ffmpeg']);
+      if (check.exitCode != 0) {
+        return ExportResult(
+          success: false,
+          message: '桌面版需要安裝 ffmpeg 才能燒字幕。\n請執行：brew install ffmpeg',
+          outputPath: videoPath,
+        );
+      }
+
+      // 使用 subtitles filter（系統 ffmpeg 通常包含 libass）
+      final escapedSrt = srtPath.replaceAll("'", "'\\''");
+      final result = await Process.run('ffmpeg', [
+        '-y',
+        '-i', videoPath,
+        '-vf',
+        "subtitles='$escapedSrt':force_style='FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,Outline=2,MarginV=30'",
+        '-c:a', 'copy',
+        '-preset', 'ultrafast',
+        outputPath,
+      ]).timeout(const Duration(minutes: 5));
+
+      if (result.exitCode == 0 && await File(outputPath).exists()) {
+        return ExportResult(
+          success: true,
+          message: '${subtitles.length} 句字幕已燒錄進影片',
+          outputPath: outputPath,
+        );
+      }
+
+      // subtitles filter 失敗 → 嘗試 drawtext fallback
+      // ignore: avoid_print
+      print('[VideoExportService] subtitles filter 失敗，嘗試 drawtext: ${result.stderr}');
+      return _burnWithSystemDrawtext(
+          videoPath, subtitles, outputPath);
+    } catch (e) {
+      return ExportResult(
+        success: false,
+        message: '系統 ffmpeg 執行失敗：$e',
+        outputPath: videoPath,
+      );
+    }
+  }
+
+  /// 桌面版 fallback：用系統 ffmpeg + drawtext
+  Future<ExportResult> _burnWithSystemDrawtext(
+    String videoPath,
+    List<SubtitleEntry> subtitles,
+    String outputPath,
+  ) async {
+    final fontFile = await _findSystemFont();
+    final vf = _buildDrawtextFilter(subtitles, fontFile);
+
+    final result = await Process.run('ffmpeg', [
+      '-y',
+      '-i', videoPath,
+      '-vf', vf,
+      '-c:a', 'copy',
+      '-preset', 'ultrafast',
+      outputPath,
+    ]).timeout(const Duration(minutes: 5));
+
+    if (result.exitCode == 0 && await File(outputPath).exists()) {
+      return ExportResult(
+        success: true,
+        message: '${subtitles.length} 句字幕已燒錄進影片',
+        outputPath: outputPath,
+      );
+    }
+
+    // ignore: avoid_print
+    print('[VideoExportService] drawtext 也失敗: ${result.stderr}');
+    return ExportResult(
+      success: false,
+      message: '字幕燒錄失敗，請確認 ffmpeg 已正確安裝',
+      outputPath: videoPath,
+    );
+  }
+
+  /// 手機版：使用 FFmpegKit drawtext filter
+  Future<ExportResult> _burnWithDrawtext(
+    String videoPath,
+    List<SubtitleEntry> subtitles,
+    String outputPath,
+  ) async {
+    final fontFile = await _findSystemFont();
+    final vf = _buildDrawtextFilter(subtitles, fontFile);
+
+    final cmd = '-y -i "$videoPath" -vf "$vf" -c:a copy -preset ultrafast "$outputPath"';
+
+    // ignore: avoid_print
+    print('[VideoExportService] drawtext 指令長度: ${cmd.length}');
+
+    final session = await FFmpegKit.execute(cmd);
+    final returnCode = await session.getReturnCode();
+
+    if (ReturnCode.isSuccess(returnCode)) {
+      return ExportResult(
+        success: true,
+        message: '${subtitles.length} 句字幕已燒錄進影片',
+        outputPath: outputPath,
+      );
+    }
+
+    final log = await session.getOutput();
+    // ignore: avoid_print
+    print('[VideoExportService] drawtext 燒錄失敗: $log');
+    return ExportResult(
+      success: false,
+      message: '字幕燒錄失敗（drawtext）',
+      outputPath: videoPath,
+    );
+  }
+
+  /// 建構 drawtext filter 字串（多句字幕以逗號串接）
+  String _buildDrawtextFilter(List<SubtitleEntry> subtitles, String fontFile) {
+    final parts = <String>[];
+    for (final sub in subtitles) {
+      // 轉義 FFmpeg drawtext 特殊字元
+      final escaped = sub.text
+          .replaceAll('\\', '\\\\')
+          .replaceAll("'", "\u2019")  // 用全形引號取代，避免轉義問題
+          .replaceAll(':', '\\:')
+          .replaceAll('%', '%%');
+
+      final dt = "drawtext="
+          "fontfile='$fontFile':"
+          "text='$escaped':"
+          "fontsize=24:"
+          "fontcolor=white:"
+          "borderw=2:"
+          "bordercolor=black:"
+          "x=(w-text_w)/2:"
+          "y=h-th-40:"
+          "enable='between(t\\,${sub.startTime}\\,${sub.endTime})'";
+      parts.add(dt);
+    }
+    return parts.join(',');
+  }
+
+  /// 尋找系統中可用的 CJK 字型檔
+  Future<String> _findSystemFont() async {
+    final candidates = Platform.isIOS
+        ? [
+            '/System/Library/Fonts/PingFang.ttc',
+            '/System/Library/Fonts/STHeiti Light.ttc',
+            '/System/Library/Fonts/Helvetica.ttc',
+          ]
+        : Platform.isMacOS
+            ? [
+                '/System/Library/Fonts/PingFang.ttc',
+                '/System/Library/Fonts/STHeiti Light.ttc',
+                '/Library/Fonts/Arial Unicode.ttf',
+                '/System/Library/Fonts/Helvetica.ttc',
+              ]
+            : [
+                // Android
+                '/system/fonts/NotoSansCJK-Regular.ttc',
+                '/system/fonts/NotoSansSC-Regular.otf',
+                '/system/fonts/DroidSansFallback.ttf',
+                '/system/fonts/Roboto-Regular.ttf',
+              ];
+
+    for (final path in candidates) {
+      if (await File(path).exists()) return path;
+    }
+
+    // 如果都找不到，回傳第一個（FFmpeg 會用內建字型）
+    return candidates.first;
+  }
+
+  /// 產生 SRT 格式字幕內容
+  String _generateSrt(List<SubtitleEntry> subtitles) {
+    final buffer = StringBuffer();
+    for (int i = 0; i < subtitles.length; i++) {
+      final sub = subtitles[i];
+      buffer.writeln('${i + 1}');
+      buffer.writeln('${_formatSrtTime(sub.startTime)} --> ${_formatSrtTime(sub.endTime)}');
+      buffer.writeln(sub.text);
+      buffer.writeln();
+    }
+    return buffer.toString();
+  }
+
+  /// 秒數轉 SRT 時間格式 (HH:MM:SS,mmm)
+  String _formatSrtTime(double seconds) {
+    final h = (seconds ~/ 3600).toString().padLeft(2, '0');
+    final m = ((seconds % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = ((seconds % 60).toInt()).toString().padLeft(2, '0');
+    final ms = ((seconds * 1000 % 1000).toInt()).toString().padLeft(3, '0');
+    return '$h:$m:$s,$ms';
   }
 }
