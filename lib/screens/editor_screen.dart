@@ -11,6 +11,12 @@ import '../services/video_export_service.dart';
 import '../services/ai_api_service.dart';
 import '../services/gemini_service.dart';
 import '../services/storage_service.dart';
+import '../theme/editor_theme.dart';
+import '../widgets/editor/top_bar/editor_top_bar.dart';
+import '../widgets/editor/preview/preview_area_widget.dart';
+import '../widgets/editor/preview/playback_control_bar.dart';
+import '../widgets/editor/timeline/timeline_workspace_widget.dart';
+import '../widgets/editor/toolbar/bottom_toolbar_widget.dart';
 import 'business_card_screen.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -151,30 +157,117 @@ class _EditorScreenState extends State<EditorScreen> {
     return Stack(
       children: [
         Scaffold(
-          appBar: AppBar(
-            title: const Text('AI 影片編輯'),
+          backgroundColor: EditorTheme.bg,
+          appBar: EditorTopBar(
+            title: 'AI 剪輯',
+            isExporting: _isExporting,
+            onBack: () => Navigator.of(context).pop(),
+            onExport: () => _handleExport(videoProvider),
           ),
           body: Column(
             children: [
-              // 上半部：影片 + 裁剪（可捲動，避免 overflow）
+              // 上半部：影片 + 控制 + 裁剪（可捲動，避免 overflow）
               Expanded(
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      _buildVideoPlayer(),
-                      _buildTimeline(),
+                      // ── 沉浸式預覽區 ────────────────
+                      PreviewAreaWidget(
+                        controller: _isPlayerReady ? _controller : null,
+                        isReady: _isPlayerReady,
+                        isTrimMode: _isTrimMode,
+                        trimStart: _trimStart,
+                        trimEnd: _trimEnd,
+                        formatDuration: _formatDuration,
+                        onTap: () {
+                          setState(() {
+                            if (_controller.value.isPlaying) {
+                              _controller.pause();
+                            } else {
+                              if (_isTrimMode) {
+                                _controller.seekTo(
+                                    _positionFromRatio(_trimStart));
+                              }
+                              _controller.play();
+                            }
+                          });
+                        },
+                      ),
+
+                      // ── 播放控制列 ──────────────────
+                      PlaybackControlBar(
+                        controller: _isPlayerReady ? _controller : null,
+                        isReady: _isPlayerReady,
+                        isTrimMode: _isTrimMode,
+                        trimStart: _trimStart,
+                        trimEnd: _trimEnd,
+                        formatDuration: _formatDuration,
+                        onPlayPause: () {
+                          setState(() {
+                            if (_controller.value.isPlaying) {
+                              _controller.pause();
+                            } else {
+                              if (_isTrimMode) {
+                                _controller.seekTo(
+                                    _positionFromRatio(_trimStart));
+                              }
+                              _controller.play();
+                            }
+                          });
+                        },
+                      ),
+
                       if (_isTrimMode && _isPlayerReady) _buildTrimControls(),
-                      _buildVideoTabs(videos.length),
+
+                      // ── 多軌時間軸 ──────────────────
+                      TimelineWorkspaceWidget(
+                        controller: _isPlayerReady ? _controller : null,
+                        clipPaths: videos.map((v) => v.path).toList(),
+                        selectedClipIndex: _currentVideoIndex,
+                        trimRanges: _trimRanges,
+                        showSubtitleTrack: videoProvider.aiSubtitle,
+                        onClipTap: (index) => _switchVideo(index),
+                        onAddClip: _addMoreVideos,
+                      ),
+
                       if (!_isReorderMode) _buildTrimButton(),
                     ],
                   ),
                 ),
               ),
 
-              // 下半部：固定在底部的按鈕區
-              _buildAiButtons(videoProvider),
-              _buildExportButton(videoProvider),
-              const SizedBox(height: 20),
+              // 下半部：旗艦級底部工具矩陣
+              BottomToolbarWidget(
+                aiFillerActive: videoProvider.aiRemoveFiller,
+                aiSubtitleActive: videoProvider.aiSubtitle,
+                aiCardActive: videoProvider.aiBusinessCard,
+                isExporting: _isExporting,
+                onTrim: () => setState(() => _isTrimMode = !_isTrimMode),
+                onAddClip: _addMoreVideos,
+                onToggleFiller: () {
+                  videoProvider.toggleRemoveFiller();
+                  if (videoProvider.aiRemoveFiller) {
+                    _showAiMessage('AI 去冗言已啟用（將在匯出時處理）');
+                  }
+                },
+                onToggleSubtitle: () {
+                  videoProvider.toggleSubtitle();
+                  if (videoProvider.aiSubtitle) {
+                    _showAiMessage('AI 字幕已啟用（將在匯出時處理）');
+                  }
+                },
+                onToggleCard: () {
+                  videoProvider.toggleBusinessCard();
+                  if (videoProvider.aiBusinessCard) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const BusinessCardScreen()),
+                    );
+                  }
+                },
+                onExport: () => _handleExport(videoProvider),
+              ),
             ],
           ),
         ),
@@ -229,118 +322,8 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  // 影片播放器
-  Widget _buildVideoPlayer() {
-    return Container(
-      color: Colors.black,
-      height: 250,
-      width: double.infinity,
-      child: _isPlayerReady
-          ? Stack(
-              alignment: Alignment.center,
-              children: [
-                AspectRatio(
-                  aspectRatio: _controller.value.aspectRatio,
-                  child: VideoPlayer(_controller),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      if (_controller.value.isPlaying) {
-                        _controller.pause();
-                      } else {
-                        // 裁剪模式下從起點開始播放
-                        if (_isTrimMode) {
-                          final startPos = _positionFromRatio(_trimStart);
-                          _controller.seekTo(startPos);
-                        }
-                        _controller.play();
-                      }
-                    });
-                  },
-                  child: Icon(
-                    _controller.value.isPlaying
-                        ? Icons.pause_circle
-                        : Icons.play_circle,
-                    size: 64,
-                    color: Colors.white70,
-                  ),
-                ),
-                // 裁剪模式時顯示裁剪區間時間
-                if (_isTrimMode)
-                  Positioned(
-                    top: 8,
-                    right: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        '${_formatDuration(_positionFromRatio(_trimStart))} — ${_formatDuration(_positionFromRatio(_trimEnd))}',
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
-                      ),
-                    ),
-                  ),
-              ],
-            )
-          : const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-    );
-  }
-
-  // 時間軸（裁剪模式下顯示裁剪範圍覆蓋層）
-  Widget _buildTimeline() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: _isPlayerReady
-          ? Stack(
-              children: [
-                VideoProgressIndicator(
-                  _controller,
-                  allowScrubbing: !_isTrimMode, // 裁剪模式下禁用原生拖曳
-                  colors: const VideoProgressColors(
-                    playedColor: Colors.blueAccent,
-                    bufferedColor: Colors.lightBlueAccent,
-                    backgroundColor: Colors.grey,
-                  ),
-                ),
-                // 裁剪模式：顯示灰色遮罩（被裁掉的部分）
-                if (_isTrimMode)
-                  Positioned.fill(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final width = constraints.maxWidth;
-                        return Stack(
-                          children: [
-                            // 左側灰色遮罩
-                            Positioned(
-                              left: 0,
-                              top: 0,
-                              bottom: 0,
-                              width: width * _trimStart,
-                              child: Container(color: Colors.black45),
-                            ),
-                            // 右側灰色遮罩
-                            Positioned(
-                              right: 0,
-                              top: 0,
-                              bottom: 0,
-                              width: width * (1.0 - _trimEnd),
-                              child: Container(color: Colors.black45),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-              ],
-            )
-          : const LinearProgressIndicator(),
-    );
-  }
+  // _buildVideoPlayer 與 _buildTimeline 已由 PreviewAreaWidget 和
+  // PlaybackControlBar 取代（Step 2 重構）。
 
   // ====================================================
   //  裁剪操控區 — 雙滑桿 + 時間標示
@@ -511,196 +494,10 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   // 多段影片的切換標籤 + 排序按鈕
-  Widget _buildVideoTabs(int videoCount) {
-    return Column(
-      children: [
-        // 標籤列 + 操作按鈕
-        SizedBox(
-          height: 50,
-          child: Row(
-            children: [
-              // 影片標籤（可橫向滾動）
-              Expanded(
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(left: 12),
-                  itemCount: videoCount,
-                  itemBuilder: (context, index) {
-                    final isActive = index == _currentVideoIndex;
-                    final hasTrim = _trimRanges.containsKey(index);
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ChoiceChip(
-                        label: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('片段 ${index + 1}'),
-                            if (hasTrim) ...[
-                              const SizedBox(width: 4),
-                              const Icon(Icons.content_cut, size: 14),
-                            ],
-                          ],
-                        ),
-                        selected: isActive,
-                        onSelected: _isReorderMode ? null : (_) => _switchVideo(index),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              // 排序按鈕
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: IconButton(
-                  icon: Icon(
-                    _isReorderMode ? Icons.check_circle : Icons.swap_vert,
-                    color: _isReorderMode ? const Color(0xFF16A34A) : const Color(0xFF64748B),
-                  ),
-                  tooltip: _isReorderMode ? '完成排序' : '排列影片',
-                  onPressed: () {
-                    setState(() => _isReorderMode = !_isReorderMode);
-                  },
-                ),
-              ),
-              // 新增影片按鈕
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: IconButton(
-                  icon: const Icon(Icons.add_circle_outline, color: Color(0xFF1A56DB)),
-                  tooltip: '新增影片',
-                  onPressed: _addMoreVideos,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // 排序模式：可拖曳排列的列表
-        if (_isReorderMode) _buildReorderPanel(),
-      ],
-    );
-  }
-
-  // ====================================================
-  //  排序面板 — 拖曳排列影片順序
-  // ====================================================
-  Widget _buildReorderPanel() {
-    final videos = context.read<VideoProvider>().selectedVideos;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 標題
-          const Row(
-            children: [
-              Icon(Icons.swap_vert, size: 18, color: Color(0xFF1A56DB)),
-              SizedBox(width: 6),
-              Text(
-                '拖曳調整影片順序',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // 可拖曳列表
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: videos.length,
-            onReorder: _onReorder,
-            itemBuilder: (context, index) {
-              final fileName = videos[index].name;
-              final hasTrim = _trimRanges.containsKey(index);
-              final isActive = index == _currentVideoIndex;
-
-              return Container(
-                key: ValueKey('video_$index'),
-                margin: const EdgeInsets.only(bottom: 6),
-                decoration: BoxDecoration(
-                  color: isActive ? const Color(0xFFEFF6FF) : Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isActive ? const Color(0xFF1A56DB) : const Color(0xFFE2E8F0),
-                  ),
-                ),
-                child: ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.only(left: 12, right: 4),
-                  leading: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: isActive ? const Color(0xFF1A56DB) : const Color(0xFFE2E8F0),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${index + 1}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: isActive ? Colors.white : const Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ),
-                  title: Text(
-                    '片段 ${index + 1}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
-                    fileName.length > 25 ? '${fileName.substring(0, 25)}...' : fileName,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (hasTrim)
-                        const Padding(
-                          padding: EdgeInsets.only(right: 4),
-                          child: Icon(Icons.content_cut, size: 16, color: Color(0xFFEA580C)),
-                        ),
-                      // 移除按鈕（至少保留 1 段）
-                      if (videos.length > 1)
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle_outline, size: 20, color: Colors.red),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          onPressed: () => _removeVideo(index),
-                        ),
-                      // 拖曳手柄
-                      ReorderableDragStartListener(
-                        index: index,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Icon(Icons.drag_handle, color: Color(0xFF94A3B8)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
+  // _buildVideoTabs 與 _buildReorderPanel 已由 TimelineWorkspaceWidget 取代（Step 3）
 
   /// 拖曳排序回調
+  // ignore: unused_element
   void _onReorder(int oldIndex, int newIndex) {
     final provider = context.read<VideoProvider>();
 
@@ -738,7 +535,8 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {});
   }
 
-  /// 移除單段影片
+  /// 移除單段影片（保留供 Step 4 工具列呼叫）
+  // ignore: unused_element
   void _removeVideo(int index) {
     final provider = context.read<VideoProvider>();
     if (provider.selectedVideos.length <= 1) return;
@@ -825,121 +623,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  // 三個 AI 功能按鈕
-  Widget _buildAiButtons(VideoProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          _buildAiToggle(
-            icon: Icons.auto_fix_high,
-            label: 'AI 去冗言',
-            isActive: provider.aiRemoveFiller,
-            onTap: () {
-              provider.toggleRemoveFiller();
-              if (provider.aiRemoveFiller) _showAiMessage('AI 去冗言已啟用（將在匯出時處理）');
-            },
-          ),
-          const SizedBox(width: 8),
-          _buildAiToggle(
-            icon: Icons.subtitles,
-            label: 'AI 上字幕',
-            isActive: provider.aiSubtitle,
-            onTap: () {
-              provider.toggleSubtitle();
-              if (provider.aiSubtitle) _showAiMessage('AI 字幕已啟用（將在匯出時處理）');
-            },
-          ),
-          const SizedBox(width: 8),
-          _buildAiToggle(
-            icon: Icons.contact_mail,
-            label: '名片片尾',
-            isActive: provider.aiBusinessCard,
-            onTap: () {
-              provider.toggleBusinessCard();
-              if (provider.aiBusinessCard) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const BusinessCardScreen()),
-                );
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 單個 AI 功能按鈕的樣式
-  Widget _buildAiToggle({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            gradient: isActive
-                ? const LinearGradient(
-                    colors: [Color(0xFF1A56DB), Color(0xFF3B82F6)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
-            color: isActive ? null : const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isActive ? Colors.transparent : const Color(0xFFE2E8F0),
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: isActive ? Colors.white : const Color(0xFF64748B)),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isActive ? Colors.white : const Color(0xFF64748B),
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 匯出按鈕
-  Widget _buildExportButton(VideoProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: SizedBox(
-        width: double.infinity,
-        height: 52,
-        child: FilledButton.icon(
-          onPressed: _isExporting ? null : () => _handleExport(provider),
-          icon: _isExporting
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Icon(Icons.upload),
-          label: Text(
-            _isExporting ? '處理中...' : '匯出影片',
-            style: const TextStyle(fontSize: 16),
-          ),
-        ),
-      ),
-    );
-  }
+  // _buildAiButtons / _buildAiToggle / _buildExportButton 已由 BottomToolbarWidget 取代（Step 4）
 
   // 更新匯出步驟文字
   void _setExportStep(String text) {
@@ -972,25 +656,40 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    final outputPath = exportResult.outputPath ?? paths.first;
+    var outputPath = exportResult.outputPath ?? paths.first;
 
     // Step 2: AI 去冗言（如果啟用）
     if (provider.aiRemoveFiller) {
       _setExportStep('AI 去冗言處理中...');
       final result = await _aiService.removeFillerWords(outputPath);
       if (!mounted) return;
-      if (result.success) {
-        _showAiMessage(result.message);
-      }
+      _showAiMessage(result.message);
     }
 
     // Step 3: AI 上字幕（如果啟用）
     if (provider.aiSubtitle) {
       _setExportStep('AI 字幕生成中...');
-      final result = await _aiService.generateSubtitles(outputPath);
+      final subResult = await _aiService.generateSubtitles(outputPath);
       if (!mounted) return;
-      if (result.success) {
-        _showAiMessage(result.message);
+
+      if (subResult.success && subResult.subtitles != null && subResult.subtitles!.isNotEmpty) {
+        // 字幕生成成功 → 燒錄進影片
+        _setExportStep('字幕燒錄中...');
+        final burnResult = await _exportService.burnSubtitles(
+          videoPath: outputPath,
+          subtitles: subResult.subtitles!,
+        );
+        if (!mounted) return;
+
+        if (burnResult.success && burnResult.outputPath != null) {
+          outputPath = burnResult.outputPath!;
+          _showAiMessage('${subResult.subtitles!.length} 句字幕已燒入影片');
+        } else {
+          _showAiMessage('字幕燒錄失敗：${burnResult.message}');
+        }
+      } else {
+        // 字幕生成失敗 → 顯示錯誤訊息
+        _showAiMessage(subResult.message);
       }
     }
 
@@ -1007,9 +706,7 @@ class _EditorScreenState extends State<EditorScreen> {
           company: card.company,
         );
         if (!mounted) return;
-        if (result.success) {
-          _showAiMessage(result.message);
-        }
+        _showAiMessage(result.message);
       }
     }
 
@@ -1128,8 +825,13 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 顯示提示訊息
   void _showAiMessage(String message) {
+    // ignore: avoid_print
+    print('[EditorScreen] AI 訊息: $message');
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+      SnackBar(
+        content: Text(message),
+        duration: Duration(seconds: message.contains('失敗') ? 5 : 2),
+      ),
     );
   }
 }
