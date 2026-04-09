@@ -64,9 +64,7 @@ class GeminiService {
       }),
     ).timeout(const Duration(seconds: 30));
 
-    if (response.statusCode != 200) {
-      throw GeminiException('API 錯誤 (${response.statusCode}): ${_parseError(response.body)}');
-    }
+    if (response.statusCode != 200) _throwForStatus(response);
 
     return _extractText(response.body);
   }
@@ -105,10 +103,7 @@ class GeminiService {
         )
         .timeout(const Duration(minutes: 3));
 
-    if (response.statusCode != 200) {
-      throw GeminiException(
-          'API 錯誤 (${response.statusCode}): ${_parseError(response.body)}');
-    }
+    if (response.statusCode != 200) _throwForStatus(response);
 
     return _extractText(response.body);
   }
@@ -137,9 +132,7 @@ class GeminiService {
       }),
     );
 
-    if (initResponse.statusCode != 200) {
-      throw GeminiException('上傳初始化失敗: ${_parseError(initResponse.body)}');
-    }
+    if (initResponse.statusCode != 200) _throwForStatus(initResponse);
 
     final uploadUrl = initResponse.headers['x-goog-upload-url'];
     if (uploadUrl == null) {
@@ -161,9 +154,7 @@ class GeminiService {
         )
         .timeout(const Duration(minutes: 5));
 
-    if (uploadResponse.statusCode != 200) {
-      throw GeminiException('上傳失敗: ${_parseError(uploadResponse.body)}');
-    }
+    if (uploadResponse.statusCode != 200) _throwForStatus(uploadResponse);
 
     final fileInfo = jsonDecode(uploadResponse.body);
     final fileUri = fileInfo['file']['uri'] as String;
@@ -203,10 +194,7 @@ class GeminiService {
           )
           .timeout(const Duration(minutes: 3));
 
-      if (genResponse.statusCode != 200) {
-        throw GeminiException(
-            '分析失敗 (${genResponse.statusCode}): ${_parseError(genResponse.body)}');
-      }
+      if (genResponse.statusCode != 200) _throwForStatus(genResponse);
 
       return _extractText(genResponse.body);
     } finally {
@@ -250,28 +238,48 @@ class GeminiService {
   // ========== 高階 AI 功能 ==========
 
   /// AI 去冗言 — 分析影片中的口頭禪和冗言贅詞
+  ///
+  /// 回傳格式：
+  /// {"fillerWords":[{"word":"嗯","startTime":1.2,"endTime":1.5}],"totalFound":3,"summary":"..."}
+  ///
+  /// 注意：Gemini timestamp 估算誤差約 ±0.5 秒，呼叫端（VideoExportService）
+  /// 已在每個片段加 0.1s buffer 補償，讓 UX 層在預覽時再次確認。
   Future<Map<String, dynamic>> analyzeFillerWords(String videoPath) async {
-    const prompt = '你是一位專業的影片語音分析師。請仔細聆聽這段影片中的語音，找出所有冗言贅詞。\n\n'
-        '冗言贅詞包括但不限於：嗯、啊、呃、那個、就是、就是說、然後、然後呢、對、對對對、'
-        '基本上、所以說、怎麼說呢 等口頭禪和無意義填充詞。\n\n'
-        '請以以下 JSON 格式回傳結果：\n'
-        '{"fillerWords":[{"word":"嗯","startTime":1.2,"endTime":1.5}],'
-        '"totalFound":3,"summary":"共找到 3 處冗言贅詞"}';
+    const prompt = '你是一位專業的台灣房仲影片語音分析師。\n\n'
+        '任務：仔細聆聽這段影片語音，找出所有冗言贅詞（口頭禪、停頓填充詞）。\n\n'
+        '台灣中文常見冗言贅詞包括但不限於：\n'
+        '嗯、啊、呃、那個、就是、就是說、然後、然後呢、對、對對對、'
+        '好、好啦、這個、怎麼說、基本上、所以說、講到這個\n\n'
+        '重要規則：\n'
+        '- startTime 和 endTime 單位是「秒」，從影片開頭計算（不是段落開頭）\n'
+        '- 時間精確到小數點後兩位（例如 1.20、5.67）\n'
+        '- 只回報獨立的冗言停頓，不要把有意義的「然後」（銜接句子）也回報\n'
+        '- 如果沒有找到冗言贅詞，回傳空陣列\n\n'
+        '只回傳以下 JSON，不要有其他文字：\n'
+        '{"fillerWords":[{"word":"嗯","startTime":1.20,"endTime":1.50}],'
+        '"totalFound":1,"summary":"共找到 1 處冗言贅詞"}';
 
     final text = await analyzeVideo(videoPath, prompt);
     return jsonDecode(_cleanJson(text)) as Map<String, dynamic>;
   }
 
   /// AI 字幕 — 將影片語音轉為逐句中文字幕
+  ///
+  /// 回傳格式：
+  /// {"subtitles":[{"index":1,"startTime":0.0,"endTime":2.5,"text":"..."}],"totalLines":5}
   Future<Map<String, dynamic>> generateSubtitles(String videoPath) async {
-    const prompt = '你是一位專業的字幕生成師。請將這段影片的語音內容轉為逐句中文字幕。\n\n'
+    const prompt = '你是一位專業的台灣房仲影片字幕生成師。\n\n'
+        '任務：將這段影片的語音內容逐句轉為繁體中文字幕。\n\n'
         '規則：\n'
-        '- 每句字幕不超過 20 個字\n'
-        '- 時間精確到小數點後一位\n'
-        '- 如果語音是中文就用中文；其他語言請翻譯成中文\n\n'
-        '請以以下 JSON 格式回傳結果：\n'
-        '{"subtitles":[{"index":1,"startTime":0.0,"endTime":2.5,"text":"歡迎來到這間房子"}],'
-        '"totalLines":5}';
+        '- startTime 和 endTime 單位是「秒」，從影片開頭計算\n'
+        '- 時間精確到小數點後兩位（例如 0.00、2.50）\n'
+        '- 每句字幕不超過 20 個繁體中文字\n'
+        '- 太長的句子請在自然停頓處拆分成多句\n'
+        '- 語音是中文就保留中文；其他語言請翻譯成繁體中文\n'
+        '- 去除「嗯」「啊」等無意義填充音，直接跳過不產生字幕\n\n'
+        '只回傳以下 JSON，不要有其他文字：\n'
+        '{"subtitles":[{"index":1,"startTime":0.00,"endTime":2.50,"text":"歡迎來到這間房子"}],'
+        '"totalLines":1}';
 
     final text = await analyzeVideo(videoPath, prompt);
     return jsonDecode(_cleanJson(text)) as Map<String, dynamic>;
@@ -361,13 +369,42 @@ class GeminiService {
     return parts[0]['text'] as String;
   }
 
-  /// 從錯誤回應中提取訊息
+  /// 從錯誤回應中提取訊息（原始英文，供 _throwForStatus 使用）
   String _parseError(String body) {
     try {
       final data = jsonDecode(body);
       return data['error']?['message'] ?? body;
     } catch (_) {
       return body;
+    }
+  }
+
+  /// 將 HTTP 狀態碼轉為中文友善錯誤訊息並拋出 GeminiException
+  Never _throwForStatus(http.Response response) {
+    final code = response.statusCode;
+    switch (code) {
+      case 429:
+        // 嘗試從回應中解析實際重試等待秒數
+        final rawMsg = _parseError(response.body);
+        final retryMatch = RegExp(r'retry in (\d+\.?\d*)s').firstMatch(rawMsg);
+        final retrySec = retryMatch != null
+            ? '${retryMatch.group(1)!.split('.').first} 秒後'
+            : '稍後（約 1 分鐘）';
+        throw GeminiException(
+          'AI 配額已用完，請 $retrySec 再試\n'
+          '如需更高用量，請前往 Google AI Studio 升級方案',
+        );
+      case 401:
+        throw GeminiException('API Key 無效，請至設定頁重新輸入正確的 Gemini API Key');
+      case 403:
+        throw GeminiException('API Key 沒有使用權限，請確認 Key 已啟用 Gemini API');
+      case 400:
+        throw GeminiException('影片格式或內容不支援，請確認影片為 MP4 或 MOV 格式');
+      case 503:
+      case 504:
+        throw GeminiException('Google AI 服務暫時無法使用，請稍後再試');
+      default:
+        throw GeminiException('AI 分析失敗（錯誤代碼 $code），請稍後再試');
     }
   }
 

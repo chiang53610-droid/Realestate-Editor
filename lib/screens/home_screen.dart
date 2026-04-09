@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../utils/page_routes.dart';
-import 'pick_video_screen.dart';
+import 'one_tap_screen.dart';
 import 'portfolio_screen.dart';
 import 'script_guide_screen.dart';
 import 'business_card_screen.dart';
@@ -90,15 +90,15 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // 第二張卡片：選擇影片一鍵剪輯
+            // 第二張卡片：AI 一鍵出片
             _buildMenuCard(
               icon: Icons.movie_creation,
               iconBgColor: const Color(0xFFFFF7ED),
               iconColor: AppTheme.accentColor,
-              title: '選擇影片一鍵剪輯',
-              subtitle: '從相簿選擇素材，AI 自動剪輯',
+              title: 'AI 一鍵出片',
+              subtitle: '選片 → AI 字幕 + 去冗言 + 名片，30 秒出成品',
               onTap: () {
-                Navigator.push(context, FadeScaleRoute(page: const PickVideoScreen()));
+                Navigator.push(context, FadeScaleRoute(page: const OneTapScreen()));
               },
             ),
             const SizedBox(height: 12),

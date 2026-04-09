@@ -1,4 +1,5 @@
 import 'gemini_service.dart';
+import 'video_export_service.dart';
 
 /// 單句字幕資料
 class SubtitleEntry {
@@ -32,12 +33,17 @@ class AiResult {
 
 /// AI API 服務
 ///
-/// 有 Gemini API Key → 呼叫真實 Gemini 1.5 Flash
+/// 有 Gemini API Key → 呼叫真實 Gemini 2.0 Flash
 /// 沒有 API Key → 使用 Mock 模擬
 class AiApiService {
   final GeminiService? _gemini;
+  final VideoExportService _exportService;
 
-  AiApiService({GeminiService? geminiService}) : _gemini = geminiService;
+  AiApiService({
+    GeminiService? geminiService,
+    VideoExportService? exportService,
+  })  : _gemini = geminiService,
+        _exportService = exportService ?? VideoExportService();
 
   bool get isRealAI => _gemini != null && _gemini.isConfigured;
 
@@ -48,8 +54,36 @@ class AiApiService {
 
     try {
       final result = await _gemini!.analyzeFillerWords(videoPath);
-      final summary = result['summary'] as String? ?? '分析完成';
-      return AiResult(success: true, message: summary, outputPath: videoPath);
+
+      // 解析 fillerWords 時間戳陣列
+      final rawFillers = (result['fillerWords'] as List?) ?? [];
+      if (rawFillers.isEmpty) {
+        return AiResult(
+          success: true,
+          message: result['summary'] as String? ?? '未偵測到冗言',
+          outputPath: videoPath,
+        );
+      }
+
+      final fillerSegments = rawFillers
+          .map((f) => {
+                'startTime': (f['startTime'] as num?)?.toDouble() ?? 0.0,
+                'endTime': (f['endTime'] as num?)?.toDouble() ?? 0.0,
+              })
+          .where((f) => f['endTime']! > f['startTime']!)
+          .toList();
+
+      // 用 FFmpeg 切除 filler 片段
+      final cutResult = await _exportService.cutFillerSegments(
+        videoPath: videoPath,
+        fillerSegments: fillerSegments,
+      );
+
+      return AiResult(
+        success: cutResult.success,
+        message: cutResult.message,
+        outputPath: cutResult.outputPath ?? videoPath,
+      );
     } catch (e) {
       return AiResult(
         success: false,
@@ -103,17 +137,19 @@ class AiApiService {
   }) async {
     if (!isRealAI) return _mockGenerateBusinessCard(videoPath, agentName);
 
+    // 直接用 FFmpeg 合成名片片尾（不需要 Gemini 生成文案）
     try {
-      await _gemini!.generateBusinessCardScript(
-        agentName: agentName,
+      final result = await _exportService.appendBusinessCardEnding(
+        videoPath: videoPath,
+        name: agentName,
         title: title,
         company: company,
         phone: phone,
       );
       return AiResult(
-        success: true,
-        message: '已生成 $agentName 的名片片尾',
-        outputPath: videoPath,
+        success: result.success,
+        message: result.message,
+        outputPath: result.outputPath ?? videoPath,
       );
     } catch (e) {
       return AiResult(

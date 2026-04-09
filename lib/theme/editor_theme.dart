@@ -35,7 +35,7 @@ abstract class EditorTheme {
   // ── Text ─────────────────────────────────────────────
   static const Color textPrimary   = Color(0xFFFFFFFF);
   static const Color textSecondary = Color(0xFFAAAAAA);
-  static const Color textHint      = Color(0xFF555555);
+  static const Color textHint      = Color(0xFF757575); // WCAG AA: ~4.6:1 on surfaceCard
 
   // ── Borders & Dividers ───────────────────────────────
   static const Color border      = Color(0xFF333333);

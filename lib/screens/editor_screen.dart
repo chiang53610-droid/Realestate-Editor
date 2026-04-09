@@ -2,15 +2,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
-import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import '../providers/video_provider.dart';
-import '../models/work_item.dart';
 import '../services/video_export_service.dart';
 import '../services/ai_api_service.dart';
 import '../services/gemini_service.dart';
 import '../services/storage_service.dart';
+import '../services/export_pipeline_service.dart';
 import '../theme/editor_theme.dart';
 import '../widgets/editor/top_bar/editor_top_bar.dart';
 import '../widgets/editor/preview/preview_area_widget.dart';
@@ -34,9 +33,9 @@ class _EditorScreenState extends State<EditorScreen> {
   final VideoExportService _exportService = VideoExportService();
   AiApiService _aiService = AiApiService(); // 預設 mock，載入 API key 後升級
   final StorageService _storageService = StorageService();
+  late ExportPipelineService _pipelineService;
   bool _isExporting = false;
   String _exportStepText = ''; // 匯出步驟文字
-  bool _isReorderMode = false; // 排序模式
 
   // ====== 裁剪功能 ======
   bool _isTrimMode = false;         // 是否處於裁剪模式
@@ -48,6 +47,11 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
+    _pipelineService = ExportPipelineService(
+      exportService: _exportService,
+      aiService: _aiService,
+      storageService: _storageService,
+    );
     _initPlayer();
     _loadGeminiApiKey();
   }
@@ -58,6 +62,12 @@ class _EditorScreenState extends State<EditorScreen> {
     if (key.isNotEmpty) {
       _aiService = AiApiService(
         geminiService: GeminiService(apiKey: key),
+      );
+      // 更新 pipeline service 使用新的 AI service
+      _pipelineService = ExportPipelineService(
+        exportService: _exportService,
+        aiService: _aiService,
+        storageService: _storageService,
       );
     }
   }
@@ -230,7 +240,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         onAddClip: _addMoreVideos,
                       ),
 
-                      if (!_isReorderMode) _buildTrimButton(),
+                      if (_isTrimMode) _buildTrimButton(),
                     ],
                   ),
                 ),
@@ -242,7 +252,13 @@ class _EditorScreenState extends State<EditorScreen> {
                 aiSubtitleActive: videoProvider.aiSubtitle,
                 aiCardActive: videoProvider.aiBusinessCard,
                 isExporting: _isExporting,
-                onTrim: () => setState(() => _isTrimMode = !_isTrimMode),
+                onTrim: () => setState(() {
+                  _isTrimMode = !_isTrimMode;
+                  if (_isTrimMode && _isPlayerReady) {
+                    _controller.pause();
+                    _loadTrimRange();
+                  }
+                }),
                 onAddClip: _addMoreVideos,
                 onToggleFiller: () {
                   videoProvider.toggleRemoveFiller();
@@ -286,34 +302,36 @@ class _EditorScreenState extends State<EditorScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: EditorTheme.surface,
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: EditorTheme.border),
+            boxShadow: EditorTheme.accentGlow,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(
+              SizedBox(
                 width: 48,
                 height: 48,
                 child: CircularProgressIndicator(
                   strokeWidth: 4,
-                  color: Color(0xFF1A56DB),
+                  color: EditorTheme.accent,
                 ),
               ),
               const SizedBox(height: 20),
               Text(
                 _exportStepText.isNotEmpty ? _exportStepText : '影片匯出中...',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
+                  color: EditorTheme.textPrimary,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 '正在處理您的影片，請稍候',
-                style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                style: TextStyle(fontSize: 13, color: EditorTheme.textHint),
               ),
             ],
           ),
@@ -339,9 +357,9 @@ class _EditorScreenState extends State<EditorScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: EditorTheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: EditorTheme.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -349,14 +367,14 @@ class _EditorScreenState extends State<EditorScreen> {
           // 標題列
           Row(
             children: [
-              const Icon(Icons.content_cut, size: 18, color: Color(0xFF1A56DB)),
+              Icon(Icons.content_cut, size: 18, color: EditorTheme.accent),
               const SizedBox(width: 6),
-              const Text(
+              Text(
                 '裁剪片段',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
+                  color: EditorTheme.textPrimary,
                 ),
               ),
               const Spacer(),
@@ -364,12 +382,13 @@ class _EditorScreenState extends State<EditorScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A56DB),
+                  color: EditorTheme.accent.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: EditorTheme.accent.withValues(alpha: 0.5)),
                 ),
                 child: Text(
                   '保留 $trimDurText',
-                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: EditorTheme.accent, fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),
             ],
@@ -379,15 +398,15 @@ class _EditorScreenState extends State<EditorScreen> {
           // 起點滑桿
           Row(
             children: [
-              const SizedBox(width: 50, child: Text('起點', style: TextStyle(fontSize: 13, color: Color(0xFF64748B)))),
+              SizedBox(width: 50, child: Text('起點', style: TextStyle(fontSize: 13, color: EditorTheme.textSecondary))),
               Expanded(
                 child: SliderTheme(
                   data: SliderThemeData(
                     trackHeight: 4,
                     thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                    activeTrackColor: Colors.green[400],
-                    inactiveTrackColor: Colors.grey[300],
-                    thumbColor: Colors.green,
+                    activeTrackColor: EditorTheme.accent,
+                    inactiveTrackColor: EditorTheme.border,
+                    thumbColor: EditorTheme.accent,
                   ),
                   child: Slider(
                     value: _trimStart,
@@ -403,7 +422,7 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
               SizedBox(
                 width: 50,
-                child: Text(startTime, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                child: Text(startTime, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: EditorTheme.textPrimary)),
               ),
             ],
           ),
@@ -411,15 +430,15 @@ class _EditorScreenState extends State<EditorScreen> {
           // 終點滑桿
           Row(
             children: [
-              const SizedBox(width: 50, child: Text('終點', style: TextStyle(fontSize: 13, color: Color(0xFF64748B)))),
+              SizedBox(width: 50, child: Text('終點', style: TextStyle(fontSize: 13, color: EditorTheme.textSecondary))),
               Expanded(
                 child: SliderTheme(
                   data: SliderThemeData(
                     trackHeight: 4,
                     thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                    activeTrackColor: Colors.red[400],
-                    inactiveTrackColor: Colors.grey[300],
-                    thumbColor: Colors.red,
+                    activeTrackColor: EditorTheme.accentRed,
+                    inactiveTrackColor: EditorTheme.border,
+                    thumbColor: EditorTheme.accentRed,
                   ),
                   child: Slider(
                     value: _trimEnd,
@@ -435,7 +454,7 @@ class _EditorScreenState extends State<EditorScreen> {
               ),
               SizedBox(
                 width: 50,
-                child: Text(endTime, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                child: Text(endTime, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: EditorTheme.textPrimary)),
               ),
             ],
           ),
@@ -445,7 +464,7 @@ class _EditorScreenState extends State<EditorScreen> {
           // 總時長資訊
           Text(
             '影片總長 ${_formatDuration(total)}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+            style: TextStyle(fontSize: 12, color: EditorTheme.textHint),
           ),
         ],
       ),
@@ -482,11 +501,10 @@ class _EditorScreenState extends State<EditorScreen> {
             style: const TextStyle(fontSize: 15),
           ),
           style: OutlinedButton.styleFrom(
-            foregroundColor: _isTrimMode ? Colors.green : const Color(0xFF1A56DB),
-            side: BorderSide(
-              color: _isTrimMode ? Colors.green : const Color(0xFF1A56DB),
-            ),
+            foregroundColor: EditorTheme.accent,
+            side: BorderSide(color: EditorTheme.accent),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            backgroundColor: EditorTheme.accent.withValues(alpha: 0.08),
           ),
         ),
       ),
@@ -632,7 +650,6 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // 處理匯出流程（含 AI 功能整合）
   Future<void> _handleExport(VideoProvider provider) async {
-    // 如果正在裁剪模式，先儲存當前裁剪範圍
     if (_isTrimMode) _saveTrimRange();
 
     setState(() {
@@ -642,110 +659,27 @@ class _EditorScreenState extends State<EditorScreen> {
 
     final paths = provider.selectedVideos.map((v) => v.path).toList();
 
-    // Step 1: 影片合併/裁剪
-    final exportResult = await _exportService.mergeAndExport(
+    final result = await _pipelineService.runPipeline(
       videoPaths: paths,
       trimRanges: _trimRanges.isNotEmpty ? _trimRanges : null,
+      removeFiller: provider.aiRemoveFiller,
+      subtitle: provider.aiSubtitle,
+      businessCard: provider.aiBusinessCard,
+      onStepChange: (step) { if (mounted) _setExportStep(step); },
+      onMessage: (msg) { if (mounted) _showAiMessage(msg); },
     );
 
     if (!mounted) return;
+    setState(() => _isExporting = false);
 
-    if (!exportResult.success) {
-      setState(() => _isExporting = false);
-      _showAiMessage(exportResult.message);
+    if (!result.success) {
+      _showAiMessage(result.message);
       return;
     }
 
-    var outputPath = exportResult.outputPath ?? paths.first;
-
-    // Step 2: AI 去冗言（如果啟用）
-    if (provider.aiRemoveFiller) {
-      _setExportStep('AI 去冗言處理中...');
-      final result = await _aiService.removeFillerWords(outputPath);
-      if (!mounted) return;
-      _showAiMessage(result.message);
-    }
-
-    // Step 3: AI 上字幕（如果啟用）
-    if (provider.aiSubtitle) {
-      _setExportStep('AI 字幕生成中...');
-      final subResult = await _aiService.generateSubtitles(outputPath);
-      if (!mounted) return;
-
-      if (subResult.success && subResult.subtitles != null && subResult.subtitles!.isNotEmpty) {
-        // 字幕生成成功 → 燒錄進影片
-        _setExportStep('字幕燒錄中...');
-        final burnResult = await _exportService.burnSubtitles(
-          videoPath: outputPath,
-          subtitles: subResult.subtitles!,
-        );
-        if (!mounted) return;
-
-        if (burnResult.success && burnResult.outputPath != null) {
-          outputPath = burnResult.outputPath!;
-          _showAiMessage('${subResult.subtitles!.length} 句字幕已燒入影片');
-        } else {
-          _showAiMessage('字幕燒錄失敗：${burnResult.message}');
-        }
-      } else {
-        // 字幕生成失敗 → 顯示錯誤訊息
-        _showAiMessage(subResult.message);
-      }
-    }
-
-    // Step 4: 名片片尾（如果啟用）
-    if (provider.aiBusinessCard) {
-      _setExportStep('名片片尾生成中...');
-      final card = await _storageService.loadBusinessCard();
-      if (!card.isEmpty) {
-        final result = await _aiService.generateBusinessCard(
-          videoPath: outputPath,
-          agentName: card.name,
-          phone: card.phone,
-          title: card.title,
-          company: card.company,
-        );
-        if (!mounted) return;
-        _showAiMessage(result.message);
-      }
-    }
-
-    if (!mounted) return;
-
-    _setExportStep('儲存中...');
-
-    // 嘗試儲存到相簿（僅 iOS/Android）
-    bool savedToGallery = false;
-    if (Platform.isIOS || Platform.isAndroid) {
-      try {
-        await Gal.putVideo(outputPath);
-        savedToGallery = true;
-      } catch (_) {
-        // 儲存到相簿失敗不阻擋流程
-      }
-    }
-
-    // 儲存作品紀錄
-    final now = DateTime.now();
-    final work = WorkItem(
-      id: now.millisecondsSinceEpoch.toString(),
-      title: '房仲影片 ${now.month}/${now.day} ${now.hour}:${now.minute.toString().padLeft(2, '0')}',
-      date: '${now.year}/${now.month}/${now.day}',
-      videoCount: paths.length,
-      usedRemoveFiller: provider.aiRemoveFiller,
-      usedSubtitle: provider.aiSubtitle,
-      usedBusinessCard: provider.aiBusinessCard,
-      outputPath: outputPath,
-    );
-    await _storageService.saveWork(work);
-
-    setState(() => _isExporting = false);
-    if (!mounted) return;
-
-    // 顯示匯出成功對話框
     _showExportSuccessDialog(
-      outputPath: outputPath,
-      savedToGallery: savedToGallery,
+      outputPath: result.outputPath,
+      savedToGallery: result.savedToGallery,
     );
   }
 
